@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import math
 import re
@@ -139,13 +140,22 @@ class WatchlistBuilder:
         wallet_info = await self._collect_wallets()
         logger.info("Collected %d unique wallets from leaderboards", len(wallet_info))
 
-        # 2. Score each trader
-        traders = []
-        for i, (wallet, lb_data) in enumerate(wallet_info.items()):
-            logger.info("Processing trader %d/%d: %s...", i + 1, len(wallet_info), wallet[:10])
-            trader = await self._score_trader(wallet, lb_data)
-            if trader:
-                traders.append(trader)
+        # 2. Score each trader (5 concurrent workers)
+        sem = asyncio.Semaphore(5)
+        total = len(wallet_info)
+        processed = 0
+
+        async def _process(wallet: str, lb_data: dict) -> dict | None:
+            nonlocal processed
+            async with sem:
+                processed += 1
+                logger.info("Processing trader %d/%d: %s...", processed, total, wallet[:10])
+                return await self._score_trader(wallet, lb_data)
+
+        results = await asyncio.gather(
+            *[_process(w, d) for w, d in wallet_info.items()]
+        )
+        traders = [t for t in results if t is not None]
 
         if not traders:
             logger.warning("No traders passed filtering")

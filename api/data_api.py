@@ -63,6 +63,22 @@ class DataApiClient(BaseApiClient):
         result = await self._get("/closed-positions", params)
         return result if isinstance(result, list) else []
 
+    async def get_closed_positions_all(
+        self, user: str, max_results: int = 2000
+    ) -> list[dict]:
+        all_results = []
+        offset = 0
+        page_size = 100
+        while offset < max_results:
+            batch = await self.get_closed_positions(user, limit=page_size, offset=offset)
+            if not batch:
+                break
+            all_results.extend(batch)
+            if len(batch) < page_size:
+                break
+            offset += page_size
+        return all_results[:max_results]
+
     async def get_trades(
         self, user: str, limit: int = 100, offset: int = 0
     ) -> list[dict]:

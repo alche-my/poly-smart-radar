@@ -136,14 +136,14 @@ class WatchlistBuilder:
         logger.info("Building watchlist...")
 
         # 1. Collect unique wallets from leaderboards
-        wallets = await self._collect_wallets()
-        logger.info("Collected %d unique wallets from leaderboards", len(wallets))
+        wallet_info = await self._collect_wallets()
+        logger.info("Collected %d unique wallets from leaderboards", len(wallet_info))
 
         # 2. Score each trader
         traders = []
-        for i, wallet in enumerate(wallets):
-            logger.info("Processing trader %d/%d: %s...", i + 1, len(wallets), wallet[:10])
-            trader = await self._score_trader(wallet)
+        for i, (wallet, lb_data) in enumerate(wallet_info.items()):
+            logger.info("Processing trader %d/%d: %s...", i + 1, len(wallet_info), wallet[:10])
+            trader = await self._score_trader(wallet, lb_data)
             if trader:
                 traders.append(trader)
 
@@ -170,22 +170,23 @@ class WatchlistBuilder:
         )
         return len(traders)
 
-    async def _collect_wallets(self) -> list[str]:
-        seen = set()
-        wallets = []
+    async def _collect_wallets(self) -> dict[str, dict]:
+        wallet_info: dict[str, dict] = {}
         for cat in _CATEGORIES:
             entries = await self.data_api.get_leaderboard_all(
                 category=cat, time_period="ALL", order_by="PNL", max_results=200,
             )
             for entry in entries:
                 addr = entry.get("proxyWallet") or entry.get("userAddress") or entry.get("address", "")
-                if addr and addr not in seen:
-                    seen.add(addr)
-                    wallets.append(addr)
-        return wallets
+                if addr and addr not in wallet_info:
+                    wallet_info[addr] = {
+                        "username": entry.get("username") or entry.get("name"),
+                        "profile_image": entry.get("profileImage") or entry.get("profilePicture"),
+                    }
+        return wallet_info
 
-    async def _score_trader(self, wallet: str) -> dict | None:
-        closed = await self.data_api.get_closed_positions(wallet, limit=500)
+    async def _score_trader(self, wallet: str, lb_data: dict) -> dict | None:
+        closed = await self.data_api.get_closed_positions_all(wallet)
         if len(closed) < config.MIN_CLOSED_POSITIONS:
             return None
 
@@ -199,10 +200,13 @@ class WatchlistBuilder:
         avg_size = calc_avg_position_size(trades)
         cat_scores = calc_category_scores(closed)
 
+        # Username: prefer profile, fallback to leaderboard data
+        username = profile.get("username") or lb_data.get("username") or wallet[:10]
+
         return {
             "wallet_address": wallet,
-            "username": profile.get("username"),
-            "profile_image": profile.get("profileImage"),
+            "username": username,
+            "profile_image": profile.get("profileImage") or lb_data.get("profile_image"),
             "x_username": profile.get("xUsername"),
             "win_rate": round(win_rate, 4),
             "roi": round(roi, 4),

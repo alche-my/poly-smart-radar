@@ -32,6 +32,11 @@ class BaseApiClient:
                         await asyncio.sleep(_REQUEST_DELAY)
                         return await resp.json()
 
+                    if resp.status == 404:
+                        await asyncio.sleep(_REQUEST_DELAY)
+                        logger.debug("%s returned 404", url)
+                        return {}
+
                     if resp.status == 429 or resp.status >= 500:
                         wait = _BACKOFF_BASE * (2 ** (attempt - 1))
                         logger.warning(

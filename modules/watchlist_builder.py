@@ -385,9 +385,18 @@ def detect_domain_tags(closed: list[dict]) -> list[str]:
 
 
 def _extract_recent_bets(closed: list[dict], n: int = 10) -> list[dict]:
-    """Extract last N closed positions as compact bet records."""
+    """Extract last N closed positions as compact bet records (most recent first).
+
+    The API returns positions sorted by realizedPnl desc, so we re-sort
+    by timestamp to show the trader's actual recent activity.
+    """
+    sorted_closed = sorted(
+        closed,
+        key=lambda p: int(p.get("timestamp", 0) or 0),
+        reverse=True,
+    )
     bets = []
-    for p in closed[:n]:
+    for p in sorted_closed[:n]:
         title = p.get("title", "") or p.get("eventTitle", "") or ""
         pnl_val = float(p.get("realizedPnl", 0))
         bets.append({
@@ -492,7 +501,7 @@ class WatchlistBuilder:
         if pnl <= 0:
             return None
 
-        closed = await self.data_api.get_closed_positions_all(wallet, max_results=500)
+        closed = await self.data_api.get_closed_positions_all(wallet)  # fetch ALL positions
         if len(closed) < config.MIN_CLOSED_POSITIONS:
             return None
 

@@ -64,12 +64,19 @@ class DataApiClient(BaseApiClient):
         return result if isinstance(result, list) else []
 
     async def get_closed_positions_all(
-        self, user: str, max_results: int = 200
+        self, user: str, max_results: int = 0
     ) -> list[dict]:
+        """Fetch closed positions with pagination.
+
+        max_results: 0 means fetch ALL positions (up to 10 000 safety cap).
+        NOTE: the API returns positions sorted by realizedPnl descending.
+        To get accurate win-rate we must paginate through all positions.
+        """
         all_results = []
         offset = 0
         page_size = 50  # API returns max 50 per request
-        while offset < max_results:
+        cap = max_results if max_results > 0 else 10_000
+        while offset < cap:
             batch = await self.get_closed_positions(user, limit=page_size, offset=offset)
             if not batch:
                 break
@@ -77,7 +84,7 @@ class DataApiClient(BaseApiClient):
             if len(batch) < page_size:
                 break
             offset += page_size
-        return all_results[:max_results]
+        return all_results[:max_results] if max_results > 0 else all_results
 
     async def get_trades(
         self, user: str, limit: int = 100, offset: int = 0

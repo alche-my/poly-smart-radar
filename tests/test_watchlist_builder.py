@@ -6,7 +6,7 @@ from modules.watchlist_builder import (
     calc_roi,
     calc_consistency,
     calc_timing_quality,
-    calc_volume_weight,
+    calc_pnl_score,
     calc_avg_position_size,
     calc_category_scores,
     WatchlistBuilder,
@@ -162,23 +162,20 @@ class TestCalcTimingQuality:
         assert calc_timing_quality([]) == 0.0
 
 
-class TestCalcVolumeWeight:
-    def test_large_volume(self):
-        # log2(1_000_000) ≈ 19.93
-        positions = [{"totalBought": "1000000"}]
-        assert calc_volume_weight(positions) == pytest.approx(19.93, abs=0.1)
+class TestCalcPnlScore:
+    def test_large_pnl(self):
+        # log10(22_000_000) ≈ 7.34
+        assert calc_pnl_score(22_000_000) == pytest.approx(7.34, abs=0.01)
 
-    def test_small_volume(self):
-        # log2(100) ≈ 6.64
-        positions = [{"totalBought": "100"}]
-        assert calc_volume_weight(positions) == pytest.approx(6.64, abs=0.1)
+    def test_small_pnl(self):
+        # log10(100_000) = 5.0
+        assert calc_pnl_score(100_000) == pytest.approx(5.0)
 
-    def test_zero_volume(self):
-        positions = [{"totalBought": "0"}]
-        assert calc_volume_weight(positions) == 0.0
+    def test_zero_pnl(self):
+        assert calc_pnl_score(0) == 0.0
 
-    def test_empty(self):
-        assert calc_volume_weight([]) == 0.0
+    def test_negative_pnl(self):
+        assert calc_pnl_score(-500) == 0.0
 
 
 class TestCalcAvgPositionSize:
@@ -224,20 +221,20 @@ class TestCalcCategoryScores:
         assert len(scores) == 0
 
 
-class TestNormalizeRoi:
+class TestNormalizePnl:
     def test_basic(self):
         traders = [
-            {"roi": 0.1},
-            {"roi": -0.05},
-            {"roi": 0.3},
+            {"pnl_score": 7.0},   # $10M
+            {"pnl_score": 5.0},   # $100K
+            {"pnl_score": 6.0},   # $1M
         ]
-        WatchlistBuilder._normalize_roi(traders)
-        assert traders[1]["roi_normalized"] == 0.0  # min
-        assert traders[2]["roi_normalized"] == 1.0  # max
-        assert 0 < traders[0]["roi_normalized"] < 1
+        WatchlistBuilder._normalize_pnl(traders)
+        assert traders[1]["pnl_normalized"] == 0.0  # min
+        assert traders[0]["pnl_normalized"] == 1.0  # max
+        assert traders[2]["pnl_normalized"] == 0.5  # mid
 
-    def test_all_same_roi(self):
-        traders = [{"roi": 0.1}, {"roi": 0.1}]
-        WatchlistBuilder._normalize_roi(traders)
-        assert traders[0]["roi_normalized"] == 0.5
-        assert traders[1]["roi_normalized"] == 0.5
+    def test_all_same(self):
+        traders = [{"pnl_score": 5.0}, {"pnl_score": 5.0}]
+        WatchlistBuilder._normalize_pnl(traders)
+        assert traders[0]["pnl_normalized"] == 0.5
+        assert traders[1]["pnl_normalized"] == 0.5

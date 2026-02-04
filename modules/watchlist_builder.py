@@ -101,11 +101,11 @@ def calc_timing_quality(closed_positions: list[dict]) -> float:
     return statistics.mean(scores)
 
 
-def calc_volume_weight(closed_positions: list[dict]) -> float:
-    total_bought = sum(float(p.get("totalBought", 0)) for p in closed_positions)
-    if total_bought <= 1:
+def calc_pnl_score(pnl: float) -> float:
+    """Log10-scaled PnL. $22M → ~7.3, $100K → ~5.0, $1K → ~3.0."""
+    if pnl <= 0:
         return 0.0
-    return math.log2(total_bought)
+    return math.log10(pnl)
 
 
 def calc_avg_position_size(trades: list[dict]) -> float:
@@ -168,15 +168,17 @@ class WatchlistBuilder:
             logger.warning("No traders passed filtering")
             return 0
 
-        # 3. Normalize ROI and volume across pool
-        self._normalize_roi(traders)
-        self._normalize_volume(traders)
+        # 3. Normalize PnL across pool (log-scaled, then min-max)
+        self._normalize_pnl(traders)
 
-        # 4. Calculate final TraderScore and save
-        # Volume weight ensures high-volume traders rank above low-volume "safe bet" traders
+        # 4. Calculate final TraderScore
+        # PnL is the primary whale indicator; WR and timing are quality modifiers
         for t in traders:
+            # Skill bonus: WR adjusted by sample size + timing quality
+            wr_adjusted = t["win_rate"] * min(1.0, math.log2(max(t["total_closed"], 2)) / math.log2(100))
+            skill_bonus = (wr_adjusted + t["timing_quality"]) / 2  # 0..~1.0
             t["trader_score"] = round(
-                t["consistency"] * t["roi_normalized"] * (1 + t["timing_quality"]) * (1 + t["volume_normalized"]),
+                t["pnl_normalized"] * (1 + skill_bonus),
                 4,
             )
             upsert_trader(self.db_path, t)
@@ -197,27 +199,39 @@ class WatchlistBuilder:
             )
             for entry in entries:
                 addr = entry.get("proxyWallet") or entry.get("userAddress") or entry.get("address", "")
-                if addr and addr not in wallet_info:
+                if not addr:
+                    continue
+                pnl = float(entry.get("pnl", 0) or 0)
+                vol = float(entry.get("vol", 0) or entry.get("volume", 0) or 0)
+                if addr not in wallet_info:
                     wallet_info[addr] = {
                         "username": entry.get("userName") or entry.get("username") or entry.get("name"),
                         "profile_image": entry.get("profileImage") or entry.get("profilePicture"),
+                        "pnl": pnl,
+                        "volume": vol,
                     }
+                else:
+                    # Keep the highest PnL seen across categories
+                    if pnl > wallet_info[addr].get("pnl", 0):
+                        wallet_info[addr]["pnl"] = pnl
         return wallet_info
 
     async def _score_trader(self, wallet: str, lb_data: dict) -> dict | None:
+        pnl = lb_data.get("pnl", 0)
+        if pnl <= 0:
+            return None
+
         closed = await self.data_api.get_closed_positions_all(wallet)
         if len(closed) < config.MIN_CLOSED_POSITIONS:
             return None
-        logger.debug("Trader %s: fetched %d closed positions", wallet[:10], len(closed))
+        logger.debug("Trader %s: fetched %d closed positions, PnL=$%.0f", wallet[:10], len(closed), pnl)
 
         profile = await self.gamma_api.get_public_profile(wallet)
         trades = await self.data_api.get_trades(wallet, limit=500)
 
         win_rate = calc_win_rate(closed)
         roi = calc_roi(closed)
-        consistency = calc_consistency(win_rate, len(closed))
         timing = calc_timing_quality(closed)
-        volume = calc_volume_weight(closed)
         avg_size = calc_avg_position_size(trades)
         cat_scores = calc_category_scores(closed)
 
@@ -229,12 +243,12 @@ class WatchlistBuilder:
             "username": username,
             "profile_image": profile.get("profileImage") or lb_data.get("profile_image"),
             "x_username": profile.get("xUsername"),
+            "pnl": pnl,
+            "volume": lb_data.get("volume", 0),
+            "pnl_score": calc_pnl_score(pnl),
             "win_rate": round(win_rate, 4),
             "roi": round(roi, 4),
-            "consistency": round(consistency, 4),
             "timing_quality": round(timing, 4),
-            "roi_normalized": 0.0,  # filled in _normalize_roi
-            "volume_weight": round(volume, 4),
             "avg_position_size": round(avg_size, 2),
             "total_closed": len(closed),
             "category_scores": cat_scores,
@@ -242,25 +256,13 @@ class WatchlistBuilder:
         }
 
     @staticmethod
-    def _normalize_roi(traders: list[dict]) -> None:
-        rois = [t["roi"] for t in traders]
-        min_roi = min(rois)
-        max_roi = max(rois)
-        spread = max_roi - min_roi
+    def _normalize_pnl(traders: list[dict]) -> None:
+        scores = [t["pnl_score"] for t in traders]
+        min_s = min(scores)
+        max_s = max(scores)
+        spread = max_s - min_s
         for t in traders:
             if spread == 0:
-                t["roi_normalized"] = 0.5
+                t["pnl_normalized"] = 0.5
             else:
-                t["roi_normalized"] = round((t["roi"] - min_roi) / spread, 4)
-
-    @staticmethod
-    def _normalize_volume(traders: list[dict]) -> None:
-        vols = [t["volume_weight"] for t in traders]
-        min_vol = min(vols)
-        max_vol = max(vols)
-        spread = max_vol - min_vol
-        for t in traders:
-            if spread == 0:
-                t["volume_normalized"] = 0.5
-            else:
-                t["volume_normalized"] = round((t["volume_weight"] - min_vol) / spread, 4)
+                t["pnl_normalized"] = round((t["pnl_score"] - min_s) / spread, 4)

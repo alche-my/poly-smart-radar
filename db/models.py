@@ -19,6 +19,8 @@ _TABLES = {
             total_closed INTEGER DEFAULT 0,
             win_rate REAL DEFAULT 0,
             roi REAL DEFAULT 0,
+            pnl REAL DEFAULT 0,
+            volume REAL DEFAULT 0,
             last_updated TIMESTAMP
         )
     """,
@@ -122,8 +124,8 @@ def upsert_trader(db_path: str, trader: dict) -> None:
             INSERT INTO traders (
                 wallet_address, username, profile_image, x_username,
                 trader_score, category_scores, avg_position_size,
-                total_closed, win_rate, roi, last_updated
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                total_closed, win_rate, roi, pnl, volume, last_updated
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(wallet_address) DO UPDATE SET
                 username=excluded.username,
                 profile_image=excluded.profile_image,
@@ -134,6 +136,8 @@ def upsert_trader(db_path: str, trader: dict) -> None:
                 total_closed=excluded.total_closed,
                 win_rate=excluded.win_rate,
                 roi=excluded.roi,
+                pnl=excluded.pnl,
+                volume=excluded.volume,
                 last_updated=excluded.last_updated
             """,
             (
@@ -147,6 +151,8 @@ def upsert_trader(db_path: str, trader: dict) -> None:
                 trader.get("total_closed", 0),
                 trader.get("win_rate", 0),
                 trader.get("roi", 0),
+                trader.get("pnl", 0),
+                trader.get("volume", 0),
                 datetime.utcnow().isoformat(),
             ),
         )

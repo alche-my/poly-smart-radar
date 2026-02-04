@@ -1,6 +1,7 @@
 import pytest
 
 from modules.watchlist_builder import (
+    _build_positions_from_activity,
     classify_category,
     classify_domains,
     classify_trader_type,
@@ -469,3 +470,129 @@ class TestClassifyCategoryEsports:
         assert classify_category("Valorant Champions Tour") == "ESPORTS"
         assert classify_category("Dota 2 International winner") == "ESPORTS"
         assert classify_category("CS2 Major winner") == "ESPORTS"
+
+
+def _activity_event(cid, etype, side=None, usdc="100", price="0.5",
+                    outcome="Yes", title="Some market", ts="1700000000"):
+    """Helper to build a single /activity event dict."""
+    ev = {
+        "conditionId": cid, "type": etype,
+        "usdcSize": usdc, "price": price,
+        "outcome": outcome, "title": title,
+        "timestamp": ts,
+    }
+    if side:
+        ev["side"] = side
+    return ev
+
+
+class TestBuildPositionsFromActivity:
+    def test_buy_and_redeem_is_win(self):
+        activity = [
+            _activity_event("c1", "TRADE", side="BUY", usdc="100", price="0.6"),
+            _activity_event("c1", "REDEEM", usdc="166.67"),
+        ]
+        positions = _build_positions_from_activity(activity, open_conditions=set())
+        assert len(positions) == 1
+        pnl = float(positions[0]["realizedPnl"])
+        assert pnl > 0  # 166.67 - 100 = +66.67
+
+    def test_buy_no_redeem_not_open_is_loss(self):
+        activity = [
+            _activity_event("c1", "TRADE", side="BUY", usdc="100", price="0.6"),
+        ]
+        positions = _build_positions_from_activity(activity, open_conditions=set())
+        assert len(positions) == 1
+        pnl = float(positions[0]["realizedPnl"])
+        assert pnl < 0  # 0 - 100 = -100
+
+    def test_open_market_skipped(self):
+        activity = [
+            _activity_event("c1", "TRADE", side="BUY", usdc="100"),
+        ]
+        positions = _build_positions_from_activity(activity, open_conditions={"c1"})
+        assert len(positions) == 0
+
+    def test_sell_exit_profit(self):
+        activity = [
+            _activity_event("c1", "TRADE", side="BUY", usdc="100", price="0.5"),
+            _activity_event("c1", "TRADE", side="SELL", usdc="130"),
+        ]
+        positions = _build_positions_from_activity(activity, open_conditions=set())
+        assert len(positions) == 1
+        pnl = float(positions[0]["realizedPnl"])
+        assert pnl == pytest.approx(30.0, abs=0.01)  # 130 - 100
+
+    def test_sell_exit_loss(self):
+        activity = [
+            _activity_event("c1", "TRADE", side="BUY", usdc="100", price="0.5"),
+            _activity_event("c1", "TRADE", side="SELL", usdc="70"),
+        ]
+        positions = _build_positions_from_activity(activity, open_conditions=set())
+        pnl = float(positions[0]["realizedPnl"])
+        assert pnl == pytest.approx(-30.0, abs=0.01)  # 70 - 100
+
+    def test_redeem_without_buy_skipped(self):
+        # Entered before window, redeemed within window
+        activity = [
+            _activity_event("c1", "REDEEM", usdc="200"),
+        ]
+        positions = _build_positions_from_activity(activity, open_conditions=set())
+        assert len(positions) == 0  # no BUY → skip
+
+    def test_multiple_buys_aggregated(self):
+        activity = [
+            _activity_event("c1", "TRADE", side="BUY", usdc="50", price="0.4"),
+            _activity_event("c1", "TRADE", side="BUY", usdc="50", price="0.6"),
+            _activity_event("c1", "REDEEM", usdc="200"),
+        ]
+        positions = _build_positions_from_activity(activity, open_conditions=set())
+        assert len(positions) == 1
+        assert float(positions[0]["totalBought"]) == pytest.approx(100.0)
+        assert float(positions[0]["avgPrice"]) == pytest.approx(0.5)
+        assert float(positions[0]["realizedPnl"]) == pytest.approx(100.0)
+
+    def test_multiple_markets(self):
+        activity = [
+            _activity_event("c1", "TRADE", side="BUY", usdc="100"),
+            _activity_event("c1", "REDEEM", usdc="200"),
+            _activity_event("c2", "TRADE", side="BUY", usdc="100"),
+            # c2: no redeem, not open → loss
+        ]
+        positions = _build_positions_from_activity(activity, open_conditions=set())
+        assert len(positions) == 2
+        pnls = {p["conditionId"]: float(p["realizedPnl"]) for p in positions}
+        assert pnls["c1"] > 0
+        assert pnls["c2"] < 0
+
+    def test_empty_activity(self):
+        assert _build_positions_from_activity([], set()) == []
+
+    def test_fields_compatible_with_calc_functions(self):
+        """Synthetic positions work with calc_win_rate and calc_roi."""
+        activity = [
+            _activity_event("c1", "TRADE", side="BUY", usdc="100",
+                            price="0.3", outcome="Yes", title="Trump wins?"),
+            _activity_event("c1", "REDEEM", usdc="333"),
+            _activity_event("c2", "TRADE", side="BUY", usdc="200",
+                            price="0.7", outcome="Yes", title="BTC above 100k?"),
+            # c2 lost
+        ]
+        positions = _build_positions_from_activity(activity, open_conditions=set())
+
+        wr = calc_win_rate(positions)
+        assert wr == 0.5  # 1 win, 1 loss
+
+        roi = calc_roi(positions)
+        # total pnl = (333-100) + (0-200) = 233 - 200 = 33
+        # total bought = 100 + 200 = 300
+        assert roi == pytest.approx(33 / 300, abs=0.01)
+
+    def test_latest_timestamp_used(self):
+        activity = [
+            _activity_event("c1", "TRADE", side="BUY", ts="1000"),
+            _activity_event("c1", "TRADE", side="BUY", ts="2000"),
+            _activity_event("c1", "REDEEM", ts="3000"),
+        ]
+        positions = _build_positions_from_activity(activity, open_conditions=set())
+        assert positions[0]["timestamp"] == "3000"

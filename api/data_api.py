@@ -93,10 +93,45 @@ class DataApiClient(BaseApiClient):
         result = await self._get("/trades", params)
         return result if isinstance(result, list) else []
 
-    async def get_activity(self, user: str, limit: int = 100) -> list[dict]:
-        params = {"user": user, "limit": limit}
+    async def get_activity(
+        self, user: str, *, types: str | None = None,
+        start: int | None = None, end: int | None = None,
+        limit: int = 500, offset: int = 0,
+    ) -> list[dict]:
+        """Fetch user on-chain activity, ordered by timestamp desc."""
+        params: dict = {
+            "user": user, "limit": limit, "offset": offset,
+            "sortBy": "TIMESTAMP", "sortDirection": "DESC",
+        }
+        if types:
+            params["type"] = types
+        if start is not None:
+            params["start"] = start
+        if end is not None:
+            params["end"] = end
         result = await self._get("/activity", params)
         return result if isinstance(result, list) else []
+
+    async def get_activity_all(
+        self, user: str, *, types: str | None = None,
+        start: int | None = None, end: int | None = None,
+    ) -> list[dict]:
+        """Paginate /activity (API limit: offset <= 1000, limit <= 500)."""
+        all_results: list[dict] = []
+        offset = 0
+        page_size = 500
+        while offset <= 1000:
+            batch = await self.get_activity(
+                user, types=types, start=start, end=end,
+                limit=page_size, offset=offset,
+            )
+            if not batch:
+                break
+            all_results.extend(batch)
+            if len(batch) < page_size:
+                break
+            offset += page_size
+        return all_results
 
     async def get_holders(self, market: str, limit: int = 20) -> list[dict]:
         params = {"market": market, "limit": limit}

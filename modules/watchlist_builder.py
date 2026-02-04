@@ -384,6 +384,90 @@ def detect_domain_tags(closed: list[dict]) -> list[str]:
     return tags if tags else ["Mixed"]
 
 
+def _build_positions_from_activity(
+    activity: list[dict], open_conditions: set[str],
+) -> list[dict]:
+    """Convert /activity TRADE+REDEEM events into synthetic position records.
+
+    Groups by conditionId to build per-market data compatible with calc_* funcs.
+    - BUY  → investment
+    - SELL → early exit revenue
+    - REDEEM → redemption of winning tokens
+    - realizedPnl = redeemed + sold − invested
+
+    Markets still in open_conditions are skipped (unresolved).
+    Markets with no BUY in the window are skipped.
+    """
+    markets: dict[str, dict] = {}
+
+    for event in activity:
+        cid = event.get("conditionId", "")
+        if not cid:
+            continue
+
+        if cid not in markets:
+            markets[cid] = {
+                "conditionId": cid,
+                "title": "",
+                "outcome": "",
+                "buy_total": 0.0,
+                "buy_prices": [],
+                "sell_total": 0.0,
+                "redeem_total": 0.0,
+                "timestamp": 0,
+            }
+
+        m = markets[cid]
+        ts = int(event.get("timestamp", 0) or 0)
+        if ts > m["timestamp"]:
+            m["timestamp"] = ts
+
+        etype = event.get("type", "")
+        if etype == "TRADE":
+            side = event.get("side", "")
+            usdc = float(event.get("usdcSize", 0) or 0)
+            price = float(event.get("price", 0) or 0)
+            if side == "BUY":
+                m["buy_total"] += usdc
+                if price > 0:
+                    m["buy_prices"].append(price)
+                m["outcome"] = event.get("outcome", "") or m["outcome"]
+                m["title"] = event.get("title", "") or m["title"]
+            elif side == "SELL":
+                m["sell_total"] += usdc
+        elif etype == "REDEEM":
+            usdc = float(event.get("usdcSize", 0) or 0)
+            m["redeem_total"] += usdc
+            m["title"] = event.get("title", "") or m["title"]
+
+    # Build synthetic positions for resolved markets only
+    positions = []
+    for cid, m in markets.items():
+        if m["buy_total"] == 0:
+            continue  # no buys in window
+        if cid in open_conditions:
+            continue  # still open
+
+        realized_pnl = m["redeem_total"] + m["sell_total"] - m["buy_total"]
+        avg_price = (
+            sum(m["buy_prices"]) / len(m["buy_prices"])
+            if m["buy_prices"] else 0.5
+        )
+
+        positions.append({
+            "conditionId": cid,
+            "title": m["title"],
+            "outcome": m["outcome"],
+            "realizedPnl": str(round(realized_pnl, 6)),
+            "totalBought": str(round(m["buy_total"], 6)),
+            "totalSold": str(round(m["sell_total"], 6)),
+            "avgPrice": str(round(avg_price, 6)),
+            "timestamp": str(m["timestamp"]),
+        })
+
+    return positions
+
+
 def _extract_recent_bets(closed: list[dict], n: int = 10) -> list[dict]:
     """Extract last N closed positions as compact bet records (most recent first).
 
@@ -503,24 +587,40 @@ class WatchlistBuilder:
 
         username = lb_data.get("username") or wallet[:10]
 
-        closed = await self.data_api.get_closed_positions_all(wallet)  # fetch ALL positions
-        if len(closed) < config.MIN_CLOSED_POSITIONS:
+        # --- Fetch chronological activity (last 30d) via /activity ---
+        now_ts = int(datetime.utcnow().timestamp())
+        start_ts = now_ts - 30 * 86400
+
+        activity = await self.data_api.get_activity_all(
+            wallet, types="TRADE,REDEEM", start=start_ts,
+        )
+
+        if not activity:
+            logger.info("  %s: skipped (no activity in 30d)", username)
             return None
 
-        # Activity filter: skip traders with no recent activity
-        cutoff_ts = datetime.utcnow().timestamp() - config.ACTIVE_WINDOW_DAYS * 86400
-        timestamps = [int(p.get("timestamp", 0) or 0) for p in closed]
-        latest_ts = max(timestamps) if timestamps else 0
-
+        # Freshness check: latest event must be within ACTIVE_WINDOW_DAYS
+        cutoff_ts = now_ts - config.ACTIVE_WINDOW_DAYS * 86400
+        latest_ts = max(int(a.get("timestamp", 0) or 0) for a in activity)
         if latest_ts < cutoff_ts:
-            # No recent closed positions — check open positions as fallback
-            open_positions = await self.data_api.get_positions(wallet)
-            if not open_positions:
-                logger.info(
-                    "  %s: skipped (inactive >%dd)", username, config.ACTIVE_WINDOW_DAYS,
-                )
-                return None
+            logger.info(
+                "  %s: skipped (inactive >%dd)", username, config.ACTIVE_WINDOW_DAYS,
+            )
+            return None
 
+        # Open positions — needed to exclude unresolved markets from WR
+        open_positions = await self.data_api.get_positions(wallet)
+        open_conditions = {p.get("conditionId", "") for p in open_positions}
+
+        # Build synthetic position records from activity
+        closed = _build_positions_from_activity(activity, open_conditions)
+
+        if len(closed) < config.MIN_CLOSED_POSITIONS:
+            logger.info("  %s: skipped (%d resolved markets < %d)",
+                        username, len(closed), config.MIN_CLOSED_POSITIONS)
+            return None
+
+        # All existing calc_* functions work on the synthetic positions
         win_rate = calc_win_rate(closed)
         roi = calc_roi(closed)
         timing = calc_timing_quality(closed)
@@ -534,7 +634,7 @@ class WatchlistBuilder:
         recent_bets = _extract_recent_bets(closed)
 
         logger.info(
-            "  %s: %s [%s], WR %.0f%%, %d closed, signals=%s",
+            "  %s: %s [%s], WR %.0f%%, %d markets, signals=%s",
             username, trader_type, ", ".join(domain_tags),
             win_rate * 100, len(closed), algo_signals or "-",
         )

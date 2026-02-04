@@ -64,7 +64,7 @@ class DataApiClient(BaseApiClient):
         return result if isinstance(result, list) else []
 
     async def get_closed_positions_all(
-        self, user: str, max_results: int = 2000
+        self, user: str, max_results: int = 200
     ) -> list[dict]:
         all_results = []
         offset = 0

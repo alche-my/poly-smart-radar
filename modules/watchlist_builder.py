@@ -140,14 +140,19 @@ class WatchlistBuilder:
         self.gamma_api = gamma_api
         self.db_path = db_path
 
-    async def build_watchlist(self) -> int:
+    async def build_watchlist(self, limit: int = 0) -> int:
         logger.info("Building watchlist...")
 
         # 1. Collect unique wallets from leaderboards
         wallet_info = await self._collect_wallets()
         logger.info("Collected %d unique wallets from leaderboards", len(wallet_info))
 
-        # 2. Score each trader (5 concurrent workers)
+        # Optional: limit for fast debugging
+        if limit > 0:
+            wallet_info = dict(list(wallet_info.items())[:limit])
+            logger.info("Limited to %d wallets for testing", limit)
+
+        # 2. Score each trader (3 concurrent workers)
         sem = asyncio.Semaphore(3)
         total = len(wallet_info)
         processed = 0

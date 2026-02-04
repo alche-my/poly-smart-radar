@@ -25,12 +25,12 @@ async def run_once(scheduler: RadarScheduler) -> None:
         await scheduler.close()
 
 
-async def rebuild_watchlist(scheduler: RadarScheduler) -> None:
+async def rebuild_watchlist(scheduler: RadarScheduler, limit: int = 0) -> None:
     from db.migrations import run_migrations
     from db.models import get_traders
     run_migrations(scheduler.db_path)
     try:
-        count = await scheduler.watchlist_builder.build_watchlist()
+        count = await scheduler.watchlist_builder.build_watchlist(limit=limit)
         logger.info("Watchlist rebuilt: %d traders", count)
         traders = get_traders(scheduler.db_path)
         logger.info("Top 10 traders:")
@@ -71,12 +71,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Polymarket Whale Radar")
     parser.add_argument("--once", action="store_true", help="Run one scan cycle and exit")
     parser.add_argument("--rebuild-watchlist", action="store_true", help="Rebuild watchlist and exit")
+    parser.add_argument("--limit", type=int, default=0, help="Limit traders to process (for testing)")
     args = parser.parse_args()
 
     scheduler = RadarScheduler(db_path=config.DB_PATH)
 
     if args.rebuild_watchlist:
-        asyncio.run(rebuild_watchlist(scheduler))
+        asyncio.run(rebuild_watchlist(scheduler, limit=args.limit))
     elif args.once:
         asyncio.run(run_once(scheduler))
     else:

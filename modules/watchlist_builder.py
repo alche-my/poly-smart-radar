@@ -148,7 +148,7 @@ class WatchlistBuilder:
         logger.info("Collected %d unique wallets from leaderboards", len(wallet_info))
 
         # 2. Score each trader (5 concurrent workers)
-        sem = asyncio.Semaphore(5)
+        sem = asyncio.Semaphore(2)
         total = len(wallet_info)
         processed = 0
 

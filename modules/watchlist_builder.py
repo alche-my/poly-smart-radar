@@ -501,9 +501,25 @@ class WatchlistBuilder:
         if pnl <= 0:
             return None
 
+        username = lb_data.get("username") or wallet[:10]
+
         closed = await self.data_api.get_closed_positions_all(wallet)  # fetch ALL positions
         if len(closed) < config.MIN_CLOSED_POSITIONS:
             return None
+
+        # Activity filter: skip traders with no recent activity
+        cutoff_ts = datetime.utcnow().timestamp() - config.ACTIVE_WINDOW_DAYS * 86400
+        timestamps = [int(p.get("timestamp", 0) or 0) for p in closed]
+        latest_ts = max(timestamps) if timestamps else 0
+
+        if latest_ts < cutoff_ts:
+            # No recent closed positions — check open positions as fallback
+            open_positions = await self.data_api.get_positions(wallet)
+            if not open_positions:
+                logger.info(
+                    "  %s: skipped (inactive >%dd)", username, config.ACTIVE_WINDOW_DAYS,
+                )
+                return None
 
         win_rate = calc_win_rate(closed)
         roi = calc_roi(closed)
@@ -516,9 +532,6 @@ class WatchlistBuilder:
         domain_tags = detect_domain_tags(closed)
         strategy_type = domain_tags[0] if domain_tags else "Mixed"
         recent_bets = _extract_recent_bets(closed)
-
-        # Username from leaderboard; wallet prefix as fallback
-        username = lb_data.get("username") or wallet[:10]
 
         logger.info(
             "  %s: %s [%s], WR %.0f%%, %d closed, signals=%s",

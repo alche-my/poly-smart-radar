@@ -18,6 +18,7 @@ HIGH_THRESHOLD = 15.0
 MEDIUM_THRESHOLD = 8.0
 MIN_CLOSED_POSITIONS = 10
 MIN_TRADERS_FOR_SIGNAL = 2
+ACTIVE_WINDOW_DAYS = 14  # skip traders with no activity in this many days
 
 # --- Signal Window ---
 SIGNAL_WINDOW_HOURS = 24

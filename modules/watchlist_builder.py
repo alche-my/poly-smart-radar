@@ -609,7 +609,7 @@ class WatchlistBuilder:
             return None
 
         # Open positions — needed to exclude unresolved markets from WR
-        open_positions = await self.data_api.get_positions(wallet)
+        open_positions = await self.data_api.get_positions_all(wallet)
         open_conditions = {p.get("conditionId", "") for p in open_positions}
 
         # Build synthetic position records from activity

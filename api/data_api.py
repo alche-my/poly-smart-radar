@@ -52,9 +52,25 @@ class DataApiClient(BaseApiClient):
             offset += page_size
         return all_results[:max_results]
 
-    async def get_positions(self, user: str) -> list[dict]:
-        result = await self._get("/positions", {"user": user})
+    async def get_positions(self, user: str, limit: int = 500, offset: int = 0) -> list[dict]:
+        params = {"user": user, "limit": limit, "offset": offset}
+        result = await self._get("/positions", params)
         return result if isinstance(result, list) else []
+
+    async def get_positions_all(self, user: str) -> list[dict]:
+        """Fetch ALL open positions (paginate with limit=500)."""
+        all_results: list[dict] = []
+        offset = 0
+        page_size = 500
+        while True:
+            batch = await self.get_positions(user, limit=page_size, offset=offset)
+            if not batch:
+                break
+            all_results.extend(batch)
+            if len(batch) < page_size:
+                break
+            offset += page_size
+        return all_results
 
     async def get_closed_positions(
         self, user: str, limit: int = 100, offset: int = 0

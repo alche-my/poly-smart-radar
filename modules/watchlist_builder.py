@@ -208,6 +208,7 @@ class WatchlistBuilder:
         closed = await self.data_api.get_closed_positions_all(wallet)
         if len(closed) < config.MIN_CLOSED_POSITIONS:
             return None
+        logger.debug("Trader %s: fetched %d closed positions", wallet[:10], len(closed))
 
         profile = await self.gamma_api.get_public_profile(wallet)
         trades = await self.data_api.get_trades(wallet, limit=500)

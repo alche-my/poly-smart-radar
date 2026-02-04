@@ -6,6 +6,7 @@ from modules.watchlist_builder import (
     calc_roi,
     calc_consistency,
     calc_timing_quality,
+    calc_volume_weight,
     calc_avg_position_size,
     calc_category_scores,
     WatchlistBuilder,
@@ -159,6 +160,25 @@ class TestCalcTimingQuality:
 
     def test_empty(self):
         assert calc_timing_quality([]) == 0.0
+
+
+class TestCalcVolumeWeight:
+    def test_large_volume(self):
+        # log2(1_000_000) ≈ 19.93
+        positions = [{"totalBought": "1000000"}]
+        assert calc_volume_weight(positions) == pytest.approx(19.93, abs=0.1)
+
+    def test_small_volume(self):
+        # log2(100) ≈ 6.64
+        positions = [{"totalBought": "100"}]
+        assert calc_volume_weight(positions) == pytest.approx(6.64, abs=0.1)
+
+    def test_zero_volume(self):
+        positions = [{"totalBought": "0"}]
+        assert calc_volume_weight(positions) == 0.0
+
+    def test_empty(self):
+        assert calc_volume_weight([]) == 0.0
 
 
 class TestCalcAvgPositionSize:

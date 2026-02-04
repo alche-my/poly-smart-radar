@@ -119,6 +119,15 @@ def init_db(db_path: str) -> None:
 
 # --------------- traders ---------------
 
+def clear_traders(db_path: str) -> None:
+    conn = _get_connection(db_path)
+    try:
+        conn.execute("DELETE FROM traders")
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def upsert_trader(db_path: str, trader: dict) -> None:
     conn = _get_connection(db_path)
     try:

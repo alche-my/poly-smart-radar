@@ -27,9 +27,10 @@ async def run_once(scheduler: RadarScheduler) -> None:
 
 async def rebuild_watchlist(scheduler: RadarScheduler, limit: int = 0) -> None:
     from db.migrations import run_migrations
-    from db.models import get_traders
+    from db.models import clear_traders, get_traders
     run_migrations(scheduler.db_path)
     try:
+        clear_traders(scheduler.db_path)
         count = await scheduler.watchlist_builder.build_watchlist(limit=limit)
         logger.info("Watchlist rebuilt: %d traders", count)
         traders = get_traders(scheduler.db_path)

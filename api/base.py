@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_TIMEOUT = aiohttp.ClientTimeout(total=30)
 _MAX_RETRIES = 3
 _BACKOFF_BASE = 1  # seconds: 1, 2, 4
-_REQUEST_DELAY = 0.2  # seconds between sequential requests
+_REQUEST_DELAY = 0.15  # seconds between sequential requests
 
 
 class BaseApiClient:

@@ -148,7 +148,7 @@ class WatchlistBuilder:
         logger.info("Collected %d unique wallets from leaderboards", len(wallet_info))
 
         # 2. Score each trader (5 concurrent workers)
-        sem = asyncio.Semaphore(2)
+        sem = asyncio.Semaphore(3)
         total = len(wallet_info)
         processed = 0
 
@@ -224,27 +224,21 @@ class WatchlistBuilder:
         closed = await self.data_api.get_closed_positions_all(wallet)
         if len(closed) < config.MIN_CLOSED_POSITIONS:
             return None
-        logger.debug("Trader %s: fetched %d closed positions, PnL=$%.0f", wallet[:10], len(closed), pnl)
-
-        profile = await self.gamma_api.get_public_profile(wallet)
-        trades = await self.data_api.get_trades(wallet, limit=500)
 
         win_rate = calc_win_rate(closed)
         roi = calc_roi(closed)
         timing = calc_timing_quality(closed)
-        avg_size = calc_avg_position_size(trades)
+        consistency = calc_consistency(win_rate, len(closed))
         cat_scores = calc_category_scores(closed)
 
-        # Username: prefer profile, fallback to leaderboard data
-        username = profile.get("username") or lb_data.get("username") or wallet[:10]
-
-        consistency = calc_consistency(win_rate, len(closed))
+        # Username from leaderboard; wallet prefix as fallback
+        username = lb_data.get("username") or wallet[:10]
 
         return {
             "wallet_address": wallet,
             "username": username,
-            "profile_image": profile.get("profileImage") or lb_data.get("profile_image"),
-            "x_username": profile.get("xUsername"),
+            "profile_image": lb_data.get("profile_image"),
+            "x_username": None,
             "pnl": pnl,
             "volume": lb_data.get("volume", 0),
             "win_rate": round(win_rate, 4),
@@ -252,7 +246,7 @@ class WatchlistBuilder:
             "consistency": round(consistency, 4),
             "timing_quality": round(timing, 4),
             "roi_normalized": 0.0,  # filled in _normalize_roi
-            "avg_position_size": round(avg_size, 2),
+            "avg_position_size": 0,
             "total_closed": len(closed),
             "category_scores": cat_scores,
             "trader_score": 0.0,  # filled after normalization

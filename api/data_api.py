@@ -68,14 +68,14 @@ class DataApiClient(BaseApiClient):
     ) -> list[dict]:
         """Fetch closed positions with pagination.
 
-        max_results: 0 means fetch ALL positions (up to 10 000 safety cap).
+        max_results: 0 means fetch ALL positions (up to 50 000 safety cap).
         NOTE: the API returns positions sorted by realizedPnl descending.
         To get accurate win-rate we must paginate through all positions.
         """
         all_results = []
         offset = 0
         page_size = 50  # API returns max 50 per request
-        cap = max_results if max_results > 0 else 10_000
+        cap = max_results if max_results > 0 else 50_000
         while offset < cap:
             batch = await self.get_closed_positions(user, limit=page_size, offset=offset)
             if not batch:

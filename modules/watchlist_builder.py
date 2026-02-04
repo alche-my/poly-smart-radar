@@ -101,6 +101,13 @@ def calc_timing_quality(closed_positions: list[dict]) -> float:
     return statistics.mean(scores)
 
 
+def calc_volume_weight(closed_positions: list[dict]) -> float:
+    total_bought = sum(float(p.get("totalBought", 0)) for p in closed_positions)
+    if total_bought <= 1:
+        return 0.0
+    return math.log2(total_bought)
+
+
 def calc_avg_position_size(trades: list[dict]) -> float:
     sizes = [float(t.get("usdcSize", 0)) for t in trades if float(t.get("usdcSize", 0)) > 0]
     if not sizes:
@@ -161,13 +168,15 @@ class WatchlistBuilder:
             logger.warning("No traders passed filtering")
             return 0
 
-        # 3. Normalize ROI across pool
+        # 3. Normalize ROI and volume across pool
         self._normalize_roi(traders)
+        self._normalize_volume(traders)
 
         # 4. Calculate final TraderScore and save
+        # Volume weight ensures high-volume traders rank above low-volume "safe bet" traders
         for t in traders:
             t["trader_score"] = round(
-                t["consistency"] * t["roi_normalized"] * (1 + t["timing_quality"]),
+                t["consistency"] * t["roi_normalized"] * (1 + t["timing_quality"]) * (1 + t["volume_normalized"]),
                 4,
             )
             upsert_trader(self.db_path, t)
@@ -190,7 +199,7 @@ class WatchlistBuilder:
                 addr = entry.get("proxyWallet") or entry.get("userAddress") or entry.get("address", "")
                 if addr and addr not in wallet_info:
                     wallet_info[addr] = {
-                        "username": entry.get("username") or entry.get("name"),
+                        "username": entry.get("userName") or entry.get("username") or entry.get("name"),
                         "profile_image": entry.get("profileImage") or entry.get("profilePicture"),
                     }
         return wallet_info
@@ -207,6 +216,7 @@ class WatchlistBuilder:
         roi = calc_roi(closed)
         consistency = calc_consistency(win_rate, len(closed))
         timing = calc_timing_quality(closed)
+        volume = calc_volume_weight(closed)
         avg_size = calc_avg_position_size(trades)
         cat_scores = calc_category_scores(closed)
 
@@ -223,6 +233,7 @@ class WatchlistBuilder:
             "consistency": round(consistency, 4),
             "timing_quality": round(timing, 4),
             "roi_normalized": 0.0,  # filled in _normalize_roi
+            "volume_weight": round(volume, 4),
             "avg_position_size": round(avg_size, 2),
             "total_closed": len(closed),
             "category_scores": cat_scores,
@@ -240,3 +251,15 @@ class WatchlistBuilder:
                 t["roi_normalized"] = 0.5
             else:
                 t["roi_normalized"] = round((t["roi"] - min_roi) / spread, 4)
+
+    @staticmethod
+    def _normalize_volume(traders: list[dict]) -> None:
+        vols = [t["volume_weight"] for t in traders]
+        min_vol = min(vols)
+        max_vol = max(vols)
+        spread = max_vol - min_vol
+        for t in traders:
+            if spread == 0:
+                t["volume_normalized"] = 0.5
+            else:
+                t["volume_normalized"] = round((t["volume_weight"] - min_vol) / spread, 4)

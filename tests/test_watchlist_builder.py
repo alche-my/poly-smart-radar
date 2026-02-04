@@ -221,20 +221,20 @@ class TestCalcCategoryScores:
         assert len(scores) == 0
 
 
-class TestNormalizePnl:
+class TestNormalizeRoi:
     def test_basic(self):
         traders = [
-            {"pnl_score": 7.0},   # $10M
-            {"pnl_score": 5.0},   # $100K
-            {"pnl_score": 6.0},   # $1M
+            {"roi": 0.1},
+            {"roi": -0.05},
+            {"roi": 0.3},
         ]
-        WatchlistBuilder._normalize_pnl(traders)
-        assert traders[1]["pnl_normalized"] == 0.0  # min
-        assert traders[0]["pnl_normalized"] == 1.0  # max
-        assert traders[2]["pnl_normalized"] == 0.5  # mid
+        WatchlistBuilder._normalize_roi(traders)
+        assert traders[1]["roi_normalized"] == 0.0  # min
+        assert traders[2]["roi_normalized"] == 1.0  # max
+        assert 0 < traders[0]["roi_normalized"] < 1
 
-    def test_all_same(self):
-        traders = [{"pnl_score": 5.0}, {"pnl_score": 5.0}]
-        WatchlistBuilder._normalize_pnl(traders)
-        assert traders[0]["pnl_normalized"] == 0.5
-        assert traders[1]["pnl_normalized"] == 0.5
+    def test_all_same_roi(self):
+        traders = [{"roi": 0.1}, {"roi": 0.1}]
+        WatchlistBuilder._normalize_roi(traders)
+        assert traders[0]["roi_normalized"] == 0.5
+        assert traders[1]["roi_normalized"] == 0.5

@@ -168,17 +168,17 @@ class WatchlistBuilder:
             logger.warning("No traders passed filtering")
             return 0
 
-        # 3. Normalize PnL across pool (log-scaled, then min-max)
-        self._normalize_pnl(traders)
+        # 3. Normalize ROI across pool
+        self._normalize_roi(traders)
 
         # 4. Calculate final TraderScore
-        # PnL is the primary whale indicator; WR and timing are quality modifiers
+        # timing_quality is primary: rewards traders who enter early (real edge)
+        # consistency (WR × log2(N)): validates accuracy over sample size
+        # roi_normalized: bonus for good returns
+        # Safe-bet traders (buy YES@0.95) get timing ≈ 0.05 → naturally rank low
         for t in traders:
-            # Skill bonus: WR adjusted by sample size + timing quality
-            wr_adjusted = t["win_rate"] * min(1.0, math.log2(max(t["total_closed"], 2)) / math.log2(100))
-            skill_bonus = (wr_adjusted + t["timing_quality"]) / 2  # 0..~1.0
             t["trader_score"] = round(
-                t["pnl_normalized"] * (1 + skill_bonus),
+                t["timing_quality"] * t["consistency"] * (1 + t["roi_normalized"]),
                 4,
             )
             upsert_trader(self.db_path, t)
@@ -238,6 +238,8 @@ class WatchlistBuilder:
         # Username: prefer profile, fallback to leaderboard data
         username = profile.get("username") or lb_data.get("username") or wallet[:10]
 
+        consistency = calc_consistency(win_rate, len(closed))
+
         return {
             "wallet_address": wallet,
             "username": username,
@@ -245,10 +247,11 @@ class WatchlistBuilder:
             "x_username": profile.get("xUsername"),
             "pnl": pnl,
             "volume": lb_data.get("volume", 0),
-            "pnl_score": calc_pnl_score(pnl),
             "win_rate": round(win_rate, 4),
             "roi": round(roi, 4),
+            "consistency": round(consistency, 4),
             "timing_quality": round(timing, 4),
+            "roi_normalized": 0.0,  # filled in _normalize_roi
             "avg_position_size": round(avg_size, 2),
             "total_closed": len(closed),
             "category_scores": cat_scores,
@@ -256,13 +259,13 @@ class WatchlistBuilder:
         }
 
     @staticmethod
-    def _normalize_pnl(traders: list[dict]) -> None:
-        scores = [t["pnl_score"] for t in traders]
-        min_s = min(scores)
-        max_s = max(scores)
-        spread = max_s - min_s
+    def _normalize_roi(traders: list[dict]) -> None:
+        rois = [t["roi"] for t in traders]
+        min_roi = min(rois)
+        max_roi = max(rois)
+        spread = max_roi - min_roi
         for t in traders:
             if spread == 0:
-                t["pnl_normalized"] = 0.5
+                t["roi_normalized"] = 0.5
             else:
-                t["pnl_normalized"] = round((t["pnl_score"] - min_s) / spread, 4)
+                t["roi_normalized"] = round((t["roi"] - min_roi) / spread, 4)

@@ -38,13 +38,14 @@ async def rebuild_watchlist(scheduler: RadarScheduler) -> None:
             pnl = t.get("pnl", 0)
             pnl_str = f"${pnl/1_000_000:.1f}M" if pnl >= 1_000_000 else f"${pnl/1_000:.0f}K"
             logger.info(
-                "  %d. %s — score %.2f, PnL %s, WR %.0f%%, closed %d",
+                "  %d. %s — score %.2f, timing %.2f, WR %.0f%%, closed %d, PnL %s",
                 i,
                 t.get("username") or t["wallet_address"][:10],
                 t.get("trader_score", 0),
-                pnl_str,
+                t.get("timing_quality", 0) if isinstance(t.get("timing_quality", 0), float) else 0,
                 t.get("win_rate", 0) * 100,
                 t.get("total_closed", 0),
+                pnl_str,
             )
     finally:
         await scheduler.close()

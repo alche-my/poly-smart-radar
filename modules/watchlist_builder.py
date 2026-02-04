@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import math
 import re
@@ -15,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 _CATEGORIES = ["OVERALL", "POLITICS", "CRYPTO", "SPORTS", "CULTURE"]
 
+# Legacy flat keywords for classify_category (used in category scoring)
 _CATEGORY_KEYWORDS = {
     "POLITICS": [
         "president", "election", "trump", "biden", "congress", "senate",
@@ -53,20 +55,135 @@ _CATEGORY_KEYWORDS = {
     ],
 }
 
+# Domain tags system — matches Polymarket web categories + sub-categories
+_DOMAIN_KEYWORDS = {
+    # === Broad categories (Polymarket top-level) ===
+    "Politics": [
+        "president", "election", "trump", "biden", "congress", "senate",
+        "governor", "democrat", "republican", "vote", "political", "minister",
+        "parliament", "gop", "dnc", "rnc", "primary", "inaugur",
+        "legislation", "supreme court", "executive order", "white house",
+        "vance", "desantis", "newsom", "rfk", "kamala", "harris",
+    ],
+    "Crypto": [
+        "bitcoin", "btc", "ethereum", "eth", "crypto", "token", "defi",
+        "blockchain", "solana", "sol", "nft", "coin", "binance", "mining",
+        "airdrop", "staking", "altcoin", "memecoin", "doge", "xrp",
+        "cardano", "ada", "polygon", "matic", "avax", "bnb",
+    ],
+    "Sports": [
+        "sports", "athlete", "championship", "playoff", "tournament",
+        "world cup", "olympics", "mvp", "medal", "coach", "draft",
+        "season", "standings", "division", "conference",
+    ],
+    "Pop Culture": [
+        "oscar", "grammy", "emmy", "movie", "film", "album", "spotify",
+        "tiktok", "youtube", "celebrity", "twitter", "music", "award",
+        "netflix", "streaming", "box office", "tv show", "reality",
+        "kardashian", "taylor swift", "drake", "kanye", "beyonce",
+        "instagram", "viral", "podcast",
+    ],
+    "Business": [
+        "stock", "s&p", "nasdaq", "fed", "interest rate", "inflation",
+        "gdp", "recession", "earnings", "ipo", "company", "ceo",
+        "economy", "market cap", "revenue", "dow jones", "treasury",
+        "unemployment", "tariff", "trade war", "debt ceiling",
+    ],
+    "Science": [
+        "climate", "nasa", "space", "satellite", "vaccine",
+        "disease", "health", "research", "study", "fda",
+        "hurricane", "temperature", "weather", "storm", "tornado",
+        "earthquake", "wildfire", "pandemic", "virus",
+    ],
+    # === Sub-categories within Sports ===
+    "NBA": [
+        "nba", "basketball", "lakers", "celtics", "warriors", "nets",
+        "bucks", "nuggets", "knicks", "sixers", "mavericks", "heat",
+        "suns", "clippers", "rockets", "spurs", "raptors", "76ers",
+    ],
+    "NFL": [
+        "nfl", "super bowl", "football", "touchdown", "quarterback",
+        "chiefs", "eagles", "cowboys", "patriots", "packers", "49ers",
+        "ravens", "bills", "dolphins", "steelers", "bears",
+    ],
+    "NHL": [
+        "nhl", "hockey", "stanley cup", "bruins", "rangers", "penguins",
+        "maple leafs", "canadiens", "oilers", "avalanche", "panthers",
+    ],
+    "MLB": [
+        "mlb", "baseball", "world series", "home run", "yankees",
+        "dodgers", "red sox", "cubs", "astros", "mets", "braves",
+    ],
+    "Soccer": [
+        "soccer", "premier league", "la liga", "bundesliga", "serie a",
+        "champions league", "mls", "euro 20", "copa america", "copa libertadores",
+        "arsenal", "barcelona", "real madrid", "manchester", "liverpool",
+        "chelsea", "bayern", "psg", "juventus", "inter milan",
+    ],
+    "MMA": [
+        "ufc", "mma", "boxing", "fight night", "bellator",
+        "knockout", "wrestling", "submission",
+    ],
+    "Tennis": [
+        "tennis", "wimbledon", "australian open", "french open",
+        "roland garros", "atp", "wta",
+    ],
+    # === Sub-category within Science ===
+    "AI": [
+        "openai", "ai", "artificial intelligence", "gpt", "chatgpt",
+        "machine learning", "deepmind", "gemini", "llm", "neural",
+        "anthropic", "claude", "midjourney", "stable diffusion",
+    ],
+    # === Standalone ===
+    "Esports": [
+        "league of legends", "dota", "csgo", "cs2", "counter-strike",
+        "valorant", "overwatch", "esports", "e-sports", "starcraft",
+        "lck", "lpl", "lec", "lcs", "worlds 20", "major qualifier",
+    ],
+}
+
+# Sub-category → parent mapping (child tag auto-adds parent)
+_DOMAIN_PARENTS = {
+    "NBA": "Sports", "NFL": "Sports", "NHL": "Sports", "MLB": "Sports",
+    "Soccer": "Sports", "MMA": "Sports", "Tennis": "Sports",
+    "AI": "Science",
+}
+
+
+def _kw_match(keyword: str, text_lower: str) -> bool:
+    """Match keyword in text. Short keywords (<=4 chars) use word boundaries."""
+    if len(keyword) <= 4:
+        return bool(re.search(r'\b' + re.escape(keyword) + r'\b', text_lower))
+    return keyword in text_lower
+
 
 def classify_category(title: str) -> str | None:
+    """Legacy: return first matching broad category (uppercase). Used for scoring."""
     if not title:
         return None
     lower = title.lower()
     for cat, keywords in _CATEGORY_KEYWORDS.items():
         for kw in keywords:
-            if len(kw) <= 4:
-                if re.search(r'\b' + re.escape(kw) + r'\b', lower):
-                    return cat
-            else:
-                if kw in lower:
-                    return cat
+            if _kw_match(kw, lower):
+                return cat
     return None
+
+
+def classify_domains(title: str) -> list[str]:
+    """Return all matching domain tags for a title (including parent tags)."""
+    if not title:
+        return []
+    lower = title.lower()
+    matched = set()
+    for domain, keywords in _DOMAIN_KEYWORDS.items():
+        for kw in keywords:
+            if _kw_match(kw, lower):
+                matched.add(domain)
+                parent = _DOMAIN_PARENTS.get(domain)
+                if parent:
+                    matched.add(parent)
+                break
+    return sorted(matched)
 
 
 def calc_win_rate(closed_positions: list[dict]) -> float:
@@ -214,17 +331,38 @@ def classify_trader_type(
 
 
 def detect_strategy_type(closed: list[dict]) -> str:
-    """Detect dominant trading strategy/domain from closed positions.
+    """Detect single dominant strategy. Kept for backward compat."""
+    tags = detect_domain_tags(closed)
+    return tags[0] if tags else "UNKNOWN"
 
-    Returns one of: SPORTS, POLITICS, CRYPTO, ESPORTS, CULTURE, TECH, FINANCE,
-    MARKET_MAKER, LONGSHOT, MIXED, UNKNOWN.
+
+def detect_domain_tags(closed: list[dict]) -> list[str]:
+    """Detect all domain tags where 10%+ of positions match.
+
+    Returns list of tags like ["Sports", "NBA", "Crypto"] or ["Mixed"].
+    Also detects behavioral tags: "Market Maker", "Longshot".
     """
     if not closed:
-        return "UNKNOWN"
+        return []
 
     total = len(closed)
+    threshold = max(total * 0.10, 1)
 
-    # 1. Check for market making (both-sides trading)
+    # 1. Count domain matches per position
+    domain_counts: dict[str, int] = defaultdict(int)
+    for p in closed:
+        title = p.get("title", "") or p.get("eventTitle", "") or ""
+        domains = classify_domains(title)
+        for d in domains:
+            domain_counts[d] += 1
+
+    # 2. Collect tags above 10% threshold
+    tags = []
+    for domain, count in sorted(domain_counts.items(), key=lambda x: -x[1]):
+        if count >= threshold:
+            tags.append(domain)
+
+    # 3. Behavioral tags
     by_market: dict[str, list[dict]] = defaultdict(list)
     for p in closed:
         cid = p.get("conditionId", "")
@@ -236,32 +374,30 @@ def detect_strategy_type(closed: list[dict]) -> str:
             1 for ps in by_market.values()
             if len(set(p.get("outcome", "").upper() for p in ps)) > 1
         )
-        both_sides_pct = both_sides / len(by_market)
-        if both_sides_pct > 0.20:
-            return "MARKET_MAKER"
+        if both_sides / len(by_market) > 0.20:
+            tags.append("Market Maker")
 
-    # 2. Check for longshot strategy (majority at extreme low prices)
-    low_price_count = sum(
-        1 for p in closed if float(p.get("avgPrice", 0)) < 0.15
-    )
-    if total > 0 and low_price_count / total > 0.40:
-        return "LONGSHOT"
+    low_price = sum(1 for p in closed if float(p.get("avgPrice", 0)) < 0.15)
+    if total > 0 and low_price / total > 0.40:
+        tags.append("Longshot")
 
-    # 3. Domain detection from titles
-    domain_counts: dict[str, int] = defaultdict(int)
-    for p in closed:
+    return tags if tags else ["Mixed"]
+
+
+def _extract_recent_bets(closed: list[dict], n: int = 10) -> list[dict]:
+    """Extract last N closed positions as compact bet records."""
+    bets = []
+    for p in closed[:n]:
         title = p.get("title", "") or p.get("eventTitle", "") or ""
-        cat = classify_category(title)
-        if cat:
-            domain_counts[cat] += 1
-
-    if domain_counts:
-        dominant = max(domain_counts, key=domain_counts.get)
-        dominant_pct = domain_counts[dominant] / total
-        if dominant_pct > 0.40:
-            return dominant
-
-    return "MIXED"
+        pnl_val = float(p.get("realizedPnl", 0))
+        bets.append({
+            "title": title[:60],
+            "category": classify_domains(title)[:2],  # top 2 domain tags
+            "outcome": p.get("outcome", ""),
+            "avgPrice": round(float(p.get("avgPrice", 0)), 2),
+            "pnl": round(pnl_val, 2),
+        })
+    return bets
 
 
 class WatchlistBuilder:
@@ -356,7 +492,7 @@ class WatchlistBuilder:
         if pnl <= 0:
             return None
 
-        closed = await self.data_api.get_closed_positions_all(wallet)
+        closed = await self.data_api.get_closed_positions_all(wallet, max_results=500)
         if len(closed) < config.MIN_CLOSED_POSITIONS:
             return None
 
@@ -368,14 +504,16 @@ class WatchlistBuilder:
 
         volume = lb_data.get("volume", 0)
         trader_type, algo_signals = classify_trader_type(closed, pnl, volume)
-        strategy_type = detect_strategy_type(closed)
+        domain_tags = detect_domain_tags(closed)
+        strategy_type = domain_tags[0] if domain_tags else "Mixed"
+        recent_bets = _extract_recent_bets(closed)
 
         # Username from leaderboard; wallet prefix as fallback
         username = lb_data.get("username") or wallet[:10]
 
         logger.info(
-            "  %s: %s/%s, WR %.0f%%, %d closed, signals=%s",
-            username, trader_type, strategy_type,
+            "  %s: %s [%s], WR %.0f%%, %d closed, signals=%s",
+            username, trader_type, ", ".join(domain_tags),
             win_rate * 100, len(closed), algo_signals or "-",
         )
 
@@ -396,6 +534,8 @@ class WatchlistBuilder:
             "category_scores": cat_scores,
             "trader_type": trader_type,
             "strategy_type": strategy_type,
+            "domain_tags": domain_tags,
+            "recent_bets": recent_bets,
             "trader_score": 0.0,  # filled after normalization
         }
 

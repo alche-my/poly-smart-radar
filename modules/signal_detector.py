@@ -12,7 +12,7 @@ from db.models import (
     insert_signal,
     update_signal,
 )
-from modules.watchlist_builder import classify_category
+from modules.watchlist_builder import classify_category, classify_domains
 
 logger = logging.getLogger(__name__)
 
@@ -126,11 +126,21 @@ class SignalDetector:
             wallet_changes = by_wallet[wallet]
             best_change = max(wallet_changes, key=lambda c: c.get("conviction_score", 0))
 
+            # Parse domain_tags and recent_bets from DB (stored as JSON strings)
+            raw_tags = trader.get("domain_tags", "[]")
+            domain_tags = json.loads(raw_tags) if isinstance(raw_tags, str) else (raw_tags or [])
+            raw_bets = trader.get("recent_bets", "[]")
+            recent_bets = json.loads(raw_bets) if isinstance(raw_bets, str) else (raw_bets or [])
+
             traders_data.append({
                 "wallet_address": wallet,
                 "username": trader.get("username", wallet[:8]),
                 "trader_score": trader.get("trader_score", 0),
                 "win_rate": trader.get("win_rate", 0),
+                "pnl": trader.get("pnl", 0),
+                "trader_type": trader.get("trader_type", "UNKNOWN"),
+                "domain_tags": domain_tags,
+                "recent_bets": recent_bets,
                 "conviction": best_change.get("conviction_score", 1.0),
                 "change_type": best_change.get("change_type", "OPEN"),
                 "size": best_change.get("new_size", 0),

@@ -39,9 +39,18 @@ async def rebuild_watchlist(scheduler: RadarScheduler, limit: int = 0) -> None:
             pnl = t.get("pnl", 0)
             pnl_str = f"${pnl/1_000_000:.1f}M" if pnl >= 1_000_000 else f"${pnl/1_000:.0f}K"
             tt = t.get("trader_type", "?")
-            st = t.get("strategy_type", "?")
+            raw_tags = t.get("domain_tags", "[]")
+            if isinstance(raw_tags, str):
+                import json as _json
+                try:
+                    tags = _json.loads(raw_tags)
+                except (ValueError, TypeError):
+                    tags = []
+            else:
+                tags = raw_tags or []
+            tags_str = ", ".join(tags[:3]) if tags else "Mixed"
             logger.info(
-                "  %d. %s — score %.2f, timing %.2f, WR %.0f%%, closed %d, PnL %s [%s/%s]",
+                "  %d. %s — score %.2f, timing %.2f, WR %.0f%%, closed %d, PnL %s [%s | %s]",
                 i,
                 t.get("username") or t["wallet_address"][:10],
                 t.get("trader_score", 0),
@@ -50,7 +59,7 @@ async def rebuild_watchlist(scheduler: RadarScheduler, limit: int = 0) -> None:
                 t.get("total_closed", 0),
                 pnl_str,
                 tt,
-                st,
+                tags_str,
             )
     finally:
         await scheduler.close()

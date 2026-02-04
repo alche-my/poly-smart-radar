@@ -2,8 +2,10 @@ import pytest
 
 from modules.watchlist_builder import (
     classify_category,
+    classify_domains,
     classify_trader_type,
     detect_strategy_type,
+    detect_domain_tags,
     calc_win_rate,
     calc_roi,
     calc_consistency,
@@ -310,58 +312,158 @@ class TestClassifyTraderType:
 
 
 class TestDetectStrategyType:
-    def test_sports(self):
+    """detect_strategy_type returns first tag from detect_domain_tags."""
+
+    def test_nba(self):
         closed = _make_closed(20, title="NBA Finals MVP 2025")
-        assert detect_strategy_type(closed) == "SPORTS"
+        result = detect_strategy_type(closed)
+        assert result in ("NBA", "Sports")
 
     def test_politics(self):
         closed = _make_closed(20, title="Will Trump win the election?")
-        assert detect_strategy_type(closed) == "POLITICS"
+        assert detect_strategy_type(closed) == "Politics"
 
     def test_crypto(self):
         closed = _make_closed(20, title="Bitcoin above 100k?")
-        assert detect_strategy_type(closed) == "CRYPTO"
+        assert detect_strategy_type(closed) == "Crypto"
 
     def test_esports(self):
         closed = _make_closed(20, title="LCK Spring Finals winner")
-        assert detect_strategy_type(closed) == "ESPORTS"
+        assert detect_strategy_type(closed) == "Esports"
 
-    def test_market_maker_both_sides(self):
-        # Same conditionId with YES and NO outcomes → market maker
+    def test_market_maker(self):
         positions = []
         for i in range(20):
             positions.append({
                 "realizedPnl": "10", "totalBought": "100", "totalSold": "90",
-                "title": "Market A", "outcome": "YES", "avgPrice": "0.5",
+                "title": "Some event", "outcome": "YES", "avgPrice": "0.5",
                 "conditionId": f"c{i}",
             })
             positions.append({
                 "realizedPnl": "5", "totalBought": "100", "totalSold": "90",
-                "title": "Market A", "outcome": "NO", "avgPrice": "0.5",
+                "title": "Some event", "outcome": "NO", "avgPrice": "0.5",
                 "conditionId": f"c{i}",
             })
-        assert detect_strategy_type(positions) == "MARKET_MAKER"
+        assert detect_strategy_type(positions) == "Market Maker"
 
     def test_longshot(self):
-        # Majority at very low prices
-        closed = _make_closed(20, price="0.05", title="Random event")
-        assert detect_strategy_type(closed) == "LONGSHOT"
+        closed = _make_closed(20, price="0.05", title="Will something happen?")
+        assert detect_strategy_type(closed) == "Longshot"
 
     def test_mixed(self):
-        # Mix of domains, none dominant
-        positions = (
-            _make_closed(5, title="NBA game") +
-            _make_closed(5, title="Trump wins?") +
-            _make_closed(5, title="Bitcoin 100k?") +
-            _make_closed(5, title="Random event")
-        )
-        assert detect_strategy_type(positions) == "MIXED"
+        # Titles that don't match any keywords → Mixed
+        closed = _make_closed(20, title="Will something happen tomorrow?")
+        assert detect_strategy_type(closed) == "Mixed"
 
     def test_empty(self):
         assert detect_strategy_type([]) == "UNKNOWN"
 
 
+class TestDetectDomainTags:
+    """Domain tags with 10% threshold."""
+
+    def test_single_domain(self):
+        closed = _make_closed(20, title="NBA Finals MVP 2025")
+        tags = detect_domain_tags(closed)
+        assert "NBA" in tags
+        assert "Sports" in tags  # parent auto-added
+
+    def test_multiple_domains(self):
+        positions = (
+            _make_closed(10, title="NBA game tonight") +
+            _make_closed(10, title="Bitcoin above 100k?")
+        )
+        tags = detect_domain_tags(positions)
+        assert "NBA" in tags
+        assert "Crypto" in tags
+
+    def test_10pct_threshold(self):
+        # 2 NBA positions out of 20 = 10% → should be tagged
+        positions = (
+            _make_closed(2, title="NBA Finals") +
+            _make_closed(18, title="Random thing here")
+        )
+        tags = detect_domain_tags(positions)
+        assert "NBA" in tags
+
+    def test_below_threshold(self):
+        # 1 NBA out of 20 = 5% → below 10%, but threshold = max(20*0.1, 1) = 2
+        # So 1 < 2 → not tagged
+        positions = (
+            _make_closed(1, title="NBA Finals") +
+            _make_closed(19, title="Random thing here")
+        )
+        tags = detect_domain_tags(positions)
+        assert "NBA" not in tags
+
+    def test_sub_category_adds_parent(self):
+        closed = _make_closed(20, title="NFL Super Bowl prediction")
+        tags = detect_domain_tags(closed)
+        assert "NFL" in tags
+        assert "Sports" in tags
+
+    def test_market_maker_tag(self):
+        positions = []
+        for i in range(20):
+            positions.append({
+                "realizedPnl": "10", "totalBought": "100", "totalSold": "90",
+                "title": "Event X", "outcome": "YES", "avgPrice": "0.5",
+                "conditionId": f"c{i}",
+            })
+            positions.append({
+                "realizedPnl": "5", "totalBought": "100", "totalSold": "90",
+                "title": "Event X", "outcome": "NO", "avgPrice": "0.5",
+                "conditionId": f"c{i}",
+            })
+        tags = detect_domain_tags(positions)
+        assert "Market Maker" in tags
+
+    def test_longshot_tag(self):
+        closed = _make_closed(20, price="0.05", title="Will X happen?")
+        tags = detect_domain_tags(closed)
+        assert "Longshot" in tags
+
+    def test_empty(self):
+        assert detect_domain_tags([]) == []
+
+    def test_no_matches_returns_mixed(self):
+        closed = _make_closed(20, title="Something completely unrelated")
+        tags = detect_domain_tags(closed)
+        assert tags == ["Mixed"]
+
+
+class TestClassifyDomains:
+    def test_nba_with_parent(self):
+        tags = classify_domains("NBA Finals MVP")
+        assert "NBA" in tags
+        assert "Sports" in tags
+
+    def test_politics(self):
+        tags = classify_domains("Trump wins the election")
+        assert "Politics" in tags
+
+    def test_multiple_domains(self):
+        tags = classify_domains("Bitcoin prediction for NBA fans")
+        assert "Crypto" in tags
+        assert "NBA" in tags
+
+    def test_esports(self):
+        tags = classify_domains("LCK Spring 2025 winner")
+        assert "Esports" in tags
+
+    def test_ai_with_parent(self):
+        tags = classify_domains("OpenAI releases GPT-5")
+        assert "AI" in tags
+        assert "Science" in tags
+
+    def test_empty(self):
+        assert classify_domains("") == []
+        assert classify_domains(None) == []
+
+
 class TestClassifyCategoryEsports:
+    """Legacy classify_category still works for backward compat."""
+
     def test_esports_keywords(self):
         assert classify_category("LCK Spring 2025 winner") == "ESPORTS"
         assert classify_category("Valorant Champions Tour") == "ESPORTS"

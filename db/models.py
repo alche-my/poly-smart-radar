@@ -24,6 +24,8 @@ _TABLES = {
             volume REAL DEFAULT 0,
             trader_type TEXT DEFAULT 'UNKNOWN',
             strategy_type TEXT DEFAULT 'UNKNOWN',
+            domain_tags TEXT DEFAULT '[]',
+            recent_bets TEXT DEFAULT '[]',
             last_updated TIMESTAMP
         )
     """,
@@ -137,8 +139,9 @@ def upsert_trader(db_path: str, trader: dict) -> None:
                 wallet_address, username, profile_image, x_username,
                 trader_score, category_scores, avg_position_size,
                 total_closed, win_rate, roi, timing_quality,
-                pnl, volume, trader_type, strategy_type, last_updated
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                pnl, volume, trader_type, strategy_type,
+                domain_tags, recent_bets, last_updated
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(wallet_address) DO UPDATE SET
                 username=excluded.username,
                 profile_image=excluded.profile_image,
@@ -154,6 +157,8 @@ def upsert_trader(db_path: str, trader: dict) -> None:
                 volume=excluded.volume,
                 trader_type=excluded.trader_type,
                 strategy_type=excluded.strategy_type,
+                domain_tags=excluded.domain_tags,
+                recent_bets=excluded.recent_bets,
                 last_updated=excluded.last_updated
             """,
             (
@@ -172,6 +177,8 @@ def upsert_trader(db_path: str, trader: dict) -> None:
                 trader.get("volume", 0),
                 trader.get("trader_type", "UNKNOWN"),
                 trader.get("strategy_type", "UNKNOWN"),
+                json.dumps(trader.get("domain_tags", [])),
+                json.dumps(trader.get("recent_bets", [])),
                 datetime.utcnow().isoformat(),
             ),
         )

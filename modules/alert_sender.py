@@ -28,6 +28,22 @@ def format_time_ago(timestamp: str) -> str:
     return f"{days}d ago"
 
 
+def _format_pnl(pnl: float) -> str:
+    if abs(pnl) >= 1_000_000:
+        return f"${pnl / 1_000_000:.1f}M"
+    if abs(pnl) >= 1_000:
+        return f"${pnl / 1_000:.0f}K"
+    return f"${pnl:.0f}"
+
+
+def _format_bet_pnl(pnl: float) -> str:
+    if pnl > 0:
+        return f"+{_format_pnl(pnl)}"
+    if pnl < 0:
+        return f"-{_format_pnl(abs(pnl))}"
+    return "$0"
+
+
 def format_signal_message(signal: dict) -> str:
     tier = signal.get("tier", 0)
     emoji = _TIER_EMOJI.get(tier, "")
@@ -47,6 +63,10 @@ def format_signal_message(signal: dict) -> str:
     else:
         involved = involved_raw
 
+    # Split by trader type
+    algo = [t for t in involved if t.get("trader_type") == "ALGO"]
+    human = [t for t in involved if t.get("trader_type") != "ALGO"]
+
     # Status prefix for lifecycle updates
     status_prefix = ""
     if status == "WEAKENING":
@@ -54,8 +74,16 @@ def format_signal_message(signal: dict) -> str:
     elif status == "CLOSED":
         status_prefix = "\u274c CLOSED | "
 
+    # Signal type indicator
+    if algo and not human:
+        type_label = "\U0001f916 ALGO | "
+    elif human and not algo:
+        type_label = "\U0001f464 | "
+    else:
+        type_label = ""
+
     lines = [
-        f"{emoji} {status_prefix}TIER {tier} | Score: {score:.1f}",
+        f"{emoji} {status_prefix}{type_label}TIER {tier} | Score: {score:.1f}",
         "",
         title,
         f"Direction: {direction} @ ${price:.2f}",
@@ -63,22 +91,53 @@ def format_signal_message(signal: dict) -> str:
     if slug:
         lines.append(f"https://polymarket.com/event/{slug}")
 
-    lines.append("")
-    lines.append(f"Traders ({len(involved)}):")
+    # ALGO traders section
+    if algo:
+        lines.append("")
+        if human:
+            lines.append(f"\U0001f916 Algo ({len(algo)}):")
+        for t in algo:
+            username = t.get("username", "?")
+            ts = t.get("trader_score", 0)
+            tags = t.get("domain_tags", [])
+            tags_str = ", ".join(tags[:3]) if tags else "Mixed"
+            ct = t.get("change_type", "?")
+            size = t.get("size", 0)
+            conv = t.get("conviction", 0)
+            ago = format_time_ago(t.get("detected_at", ""))
+            lines.append(
+                f"  {username} (score {ts:.1f}, {tags_str})"
+                f" \u2014 {ct} ${size:.0f} ({conv:.1f}x) {ago}"
+            )
 
-    for t in involved:
-        username = t.get("username", "?")
-        ts = t.get("trader_score", 0)
-        wr = t.get("win_rate", 0)
-        ct = t.get("change_type", "?")
-        size = t.get("size", 0)
-        conv = t.get("conviction", 0)
-        detected = t.get("detected_at", "")
-        ago = format_time_ago(detected)
-        lines.append(
-            f"  - {username} (score {ts:.1f}, WR {wr:.0%})"
-            f" \u2014 {ct} ${size:.0f} ({conv:.1f}x avg) {ago}"
-        )
+    # HUMAN traders section
+    if human:
+        lines.append("")
+        if algo:
+            lines.append(f"\U0001f464 Traders ({len(human)}):")
+        for t in human:
+            username = t.get("username", "?")
+            wr = t.get("win_rate", 0)
+            pnl = t.get("pnl", 0)
+            ct = t.get("change_type", "?")
+            size = t.get("size", 0)
+            conv = t.get("conviction", 0)
+            ago = format_time_ago(t.get("detected_at", ""))
+            lines.append(
+                f"  {username} (WR {wr:.0%}, PnL {_format_pnl(pnl)})"
+                f" \u2014 {ct} ${size:.0f} ({conv:.1f}x) {ago}"
+            )
+            # Recent bets for HUMAN traders
+            recent = t.get("recent_bets", [])
+            for bet in recent[:5]:
+                bet_title = bet.get("title", "?")
+                if len(bet_title) > 40:
+                    bet_title = bet_title[:37] + "..."
+                cats = bet.get("category", [])
+                cat_str = f" ({', '.join(cats)})" if cats else ""
+                bet_pnl = bet.get("pnl", 0)
+                icon = "\u2705" if bet_pnl > 0 else ("\u274c" if bet_pnl < 0 else "\u2796")
+                lines.append(f"    {icon} {bet_title}{cat_str} \u2192 {_format_bet_pnl(bet_pnl)}")
 
     return "\n".join(lines)
 

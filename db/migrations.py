@@ -9,14 +9,18 @@ def run_migrations(db_path: str) -> None:
 
 
 def _add_trader_classification_columns(db_path: str) -> None:
-    """Add trader_type and strategy_type to existing traders table."""
+    """Add classification columns to existing traders table."""
     conn = sqlite3.connect(db_path)
     try:
         cols = [row[1] for row in conn.execute("PRAGMA table_info(traders)").fetchall()]
-        if "trader_type" not in cols:
-            conn.execute("ALTER TABLE traders ADD COLUMN trader_type TEXT DEFAULT 'UNKNOWN'")
-        if "strategy_type" not in cols:
-            conn.execute("ALTER TABLE traders ADD COLUMN strategy_type TEXT DEFAULT 'UNKNOWN'")
+        for col, default in [
+            ("trader_type", "'UNKNOWN'"),
+            ("strategy_type", "'UNKNOWN'"),
+            ("domain_tags", "'[]'"),
+            ("recent_bets", "'[]'"),
+        ]:
+            if col not in cols:
+                conn.execute(f"ALTER TABLE traders ADD COLUMN {col} TEXT DEFAULT {default}")
         conn.commit()
     finally:
         conn.close()

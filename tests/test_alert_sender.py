@@ -47,6 +47,15 @@ class TestFormatSignalMessage:
                     "username": "whale1",
                     "trader_score": 8.0,
                     "win_rate": 0.72,
+                    "pnl": 450_000,
+                    "trader_type": "HUMAN",
+                    "domain_tags": ["Politics"],
+                    "recent_bets": [
+                        {"title": "Biden approval", "category": ["Politics"],
+                         "outcome": "YES", "avgPrice": 0.45, "pnl": 2100},
+                        {"title": "BTC above 80k", "category": ["Crypto"],
+                         "outcome": "YES", "avgPrice": 0.30, "pnl": -800},
+                    ],
                     "change_type": "OPEN",
                     "size": 5000,
                     "conviction": 2.5,
@@ -73,13 +82,81 @@ class TestFormatSignalMessage:
         msg = format_signal_message(self._make_signal())
         assert "https://polymarket.com/event/trump-win" in msg
 
-    def test_contains_trader_info(self):
+    def test_human_shows_wr_and_pnl(self):
         msg = format_signal_message(self._make_signal())
         assert "whale1" in msg
-        assert "score 8.0" in msg
         assert "WR 72%" in msg
+        assert "PnL $450K" in msg
         assert "OPEN" in msg
-        assert "2.5x avg" in msg
+
+    def test_human_shows_recent_bets(self):
+        msg = format_signal_message(self._make_signal())
+        assert "Biden approval" in msg
+        assert "Politics" in msg
+        assert "+$2K" in msg or "+$2100" in msg
+        assert "BTC above 80k" in msg
+
+    def test_algo_shows_score_and_tags(self):
+        now = datetime.utcnow().isoformat()
+        signal = self._make_signal(traders_involved=[
+            {
+                "username": "bot1",
+                "trader_score": 9.5,
+                "win_rate": 1.0,
+                "pnl": 5_000_000,
+                "trader_type": "ALGO",
+                "domain_tags": ["Sports", "NBA"],
+                "recent_bets": [],
+                "change_type": "OPEN",
+                "size": 10000,
+                "conviction": 3.0,
+                "detected_at": now,
+            },
+        ])
+        msg = format_signal_message(signal)
+        assert "bot1" in msg
+        assert "score 9.5" in msg
+        assert "Sports, NBA" in msg
+        assert "ALGO" in msg
+        # ALGO signals should NOT show WR/PnL
+        assert "WR 100%" not in msg
+
+    def test_human_type_label(self):
+        msg = format_signal_message(self._make_signal())
+        assert "\U0001f464" in msg  # person emoji
+        assert "\U0001f916" not in msg  # no robot emoji
+
+    def test_algo_type_label(self):
+        now = datetime.utcnow().isoformat()
+        signal = self._make_signal(traders_involved=[{
+            "username": "algobot", "trader_score": 7.0, "win_rate": 1.0,
+            "pnl": 1_000_000, "trader_type": "ALGO",
+            "domain_tags": ["Crypto"], "recent_bets": [],
+            "change_type": "INCREASE", "size": 5000,
+            "conviction": 2.0, "detected_at": now,
+        }])
+        msg = format_signal_message(signal)
+        assert "\U0001f916" in msg  # robot emoji
+
+    def test_mixed_signal_both_sections(self):
+        now = datetime.utcnow().isoformat()
+        signal = self._make_signal(traders_involved=[
+            {"username": "algobot", "trader_score": 7.0, "win_rate": 1.0,
+             "pnl": 2_000_000, "trader_type": "ALGO",
+             "domain_tags": ["Sports"], "recent_bets": [],
+             "change_type": "OPEN", "size": 5000,
+             "conviction": 2.0, "detected_at": now},
+            {"username": "human1", "trader_score": 5.0, "win_rate": 0.65,
+             "pnl": 100_000, "trader_type": "HUMAN",
+             "domain_tags": ["Politics"], "recent_bets": [],
+             "change_type": "OPEN", "size": 3000,
+             "conviction": 1.5, "detected_at": now},
+        ])
+        msg = format_signal_message(signal)
+        assert "Algo (1):" in msg
+        assert "Traders (1):" in msg
+        assert "algobot" in msg
+        assert "human1" in msg
 
     def test_weakening_prefix(self):
         msg = format_signal_message(self._make_signal(status="WEAKENING"))
@@ -102,19 +179,6 @@ class TestFormatSignalMessage:
         assert "\U0001f7e1" in msg2  # yellow
         assert "\U0001f535" in msg3  # blue
 
-    def test_multiple_traders(self):
-        now = datetime.utcnow().isoformat()
-        signal = self._make_signal(traders_involved=[
-            {"username": "t1", "trader_score": 5.0, "win_rate": 0.6,
-             "change_type": "OPEN", "size": 100, "conviction": 1.0, "detected_at": now},
-            {"username": "t2", "trader_score": 3.0, "win_rate": 0.5,
-             "change_type": "INCREASE", "size": 200, "conviction": 1.5, "detected_at": now},
-        ])
-        msg = format_signal_message(signal)
-        assert "Traders (2):" in msg
-        assert "t1" in msg
-        assert "t2" in msg
-
     def test_no_slug(self):
         msg = format_signal_message(self._make_signal(market_slug=""))
         assert "polymarket.com" not in msg
@@ -123,6 +187,8 @@ class TestFormatSignalMessage:
         import json
         now = datetime.utcnow().isoformat()
         traders = [{"username": "x", "trader_score": 1.0, "win_rate": 0.5,
+                     "pnl": 1000, "trader_type": "HUMAN",
+                     "domain_tags": [], "recent_bets": [],
                      "change_type": "OPEN", "size": 50, "conviction": 1.0,
                      "detected_at": now}]
         msg = format_signal_message(self._make_signal(traders_involved=json.dumps(traders)))

@@ -37,8 +37,10 @@ async def rebuild_watchlist(scheduler: RadarScheduler, limit: int = 0) -> None:
         for i, t in enumerate(traders[:10], 1):
             pnl = t.get("pnl", 0)
             pnl_str = f"${pnl/1_000_000:.1f}M" if pnl >= 1_000_000 else f"${pnl/1_000:.0f}K"
+            tt = t.get("trader_type", "?")
+            st = t.get("strategy_type", "?")
             logger.info(
-                "  %d. %s — score %.2f, timing %.2f, WR %.0f%%, closed %d, PnL %s",
+                "  %d. %s — score %.2f, timing %.2f, WR %.0f%%, closed %d, PnL %s [%s/%s]",
                 i,
                 t.get("username") or t["wallet_address"][:10],
                 t.get("trader_score", 0),
@@ -46,6 +48,8 @@ async def rebuild_watchlist(scheduler: RadarScheduler, limit: int = 0) -> None:
                 t.get("win_rate", 0) * 100,
                 t.get("total_closed", 0),
                 pnl_str,
+                tt,
+                st,
             )
     finally:
         await scheduler.close()

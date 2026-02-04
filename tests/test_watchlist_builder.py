@@ -2,6 +2,8 @@ import pytest
 
 from modules.watchlist_builder import (
     classify_category,
+    classify_trader_type,
+    detect_strategy_type,
     calc_win_rate,
     calc_roi,
     calc_consistency,
@@ -238,3 +240,130 @@ class TestNormalizeRoi:
         WatchlistBuilder._normalize_roi(traders)
         assert traders[0]["roi_normalized"] == 0.5
         assert traders[1]["roi_normalized"] == 0.5
+
+
+def _make_closed(n, pnl="10", bought="100", title="Some market", outcome="YES",
+                 price="0.5", condition_id="c1", timestamp=None):
+    """Helper to generate closed position dicts."""
+    return [
+        {
+            "realizedPnl": pnl,
+            "totalBought": bought,
+            "totalSold": "0",
+            "title": title,
+            "outcome": outcome,
+            "avgPrice": price,
+            "conditionId": f"{condition_id}_{i}" if n > 1 else condition_id,
+            "timestamp": timestamp,
+        }
+        for i in range(n)
+    ]
+
+
+class TestClassifyTraderType:
+    def test_algo_high_volume_high_wr(self):
+        # 200+ positions, >95% WR → ALGO (high_volume + high_wr)
+        closed = _make_closed(250, pnl="10")
+        trader_type, signals = classify_trader_type(closed, pnl=1_000_000, volume=500_000)
+        assert trader_type == "ALGO"
+        assert "high_volume" in signals
+        assert "high_wr" in signals
+
+    def test_human_few_positions(self):
+        # Few positions with varied sizes → no uniform_sizes, no high_volume
+        closed = [
+            {"realizedPnl": "10", "totalBought": str(50 + i * 30),
+             "totalSold": "0", "title": "M", "outcome": "YES",
+             "avgPrice": "0.5", "conditionId": f"c{i}",
+             "timestamp": str(1700000000 + i * 86400)}
+            for i in range(15)
+        ]
+        trader_type, signals = classify_trader_type(closed, pnl=50_000, volume=100_000)
+        assert trader_type == "HUMAN"
+
+    def test_algo_high_turnover_high_diversity(self):
+        # vol/pnl > 10 and >30 unique markets → ALGO
+        closed = _make_closed(40, pnl="10")
+        trader_type, signals = classify_trader_type(closed, pnl=10_000, volume=500_000)
+        assert trader_type == "ALGO"
+        assert "high_turnover" in signals
+        assert "high_diversity" in signals
+
+    def test_unknown_too_few(self):
+        closed = _make_closed(3, pnl="10")
+        trader_type, _ = classify_trader_type(closed, pnl=1000, volume=5000)
+        assert trader_type == "UNKNOWN"
+
+    def test_human_low_signals(self):
+        # 20 positions with mixed results and varied sizes → human-like
+        closed = [
+            {"realizedPnl": "10" if i % 2 == 0 else "-5",
+             "totalBought": str(50 + i * 25),
+             "totalSold": "0", "title": "M", "outcome": "YES",
+             "avgPrice": "0.5", "conditionId": f"c{i}",
+             "timestamp": str(1700000000 + i * 86400)}
+            for i in range(20)
+        ]
+        trader_type, signals = classify_trader_type(closed, pnl=50_000, volume=100_000)
+        assert trader_type == "HUMAN"
+        assert len(signals) < 2
+
+
+class TestDetectStrategyType:
+    def test_sports(self):
+        closed = _make_closed(20, title="NBA Finals MVP 2025")
+        assert detect_strategy_type(closed) == "SPORTS"
+
+    def test_politics(self):
+        closed = _make_closed(20, title="Will Trump win the election?")
+        assert detect_strategy_type(closed) == "POLITICS"
+
+    def test_crypto(self):
+        closed = _make_closed(20, title="Bitcoin above 100k?")
+        assert detect_strategy_type(closed) == "CRYPTO"
+
+    def test_esports(self):
+        closed = _make_closed(20, title="LCK Spring Finals winner")
+        assert detect_strategy_type(closed) == "ESPORTS"
+
+    def test_market_maker_both_sides(self):
+        # Same conditionId with YES and NO outcomes → market maker
+        positions = []
+        for i in range(20):
+            positions.append({
+                "realizedPnl": "10", "totalBought": "100", "totalSold": "90",
+                "title": "Market A", "outcome": "YES", "avgPrice": "0.5",
+                "conditionId": f"c{i}",
+            })
+            positions.append({
+                "realizedPnl": "5", "totalBought": "100", "totalSold": "90",
+                "title": "Market A", "outcome": "NO", "avgPrice": "0.5",
+                "conditionId": f"c{i}",
+            })
+        assert detect_strategy_type(positions) == "MARKET_MAKER"
+
+    def test_longshot(self):
+        # Majority at very low prices
+        closed = _make_closed(20, price="0.05", title="Random event")
+        assert detect_strategy_type(closed) == "LONGSHOT"
+
+    def test_mixed(self):
+        # Mix of domains, none dominant
+        positions = (
+            _make_closed(5, title="NBA game") +
+            _make_closed(5, title="Trump wins?") +
+            _make_closed(5, title="Bitcoin 100k?") +
+            _make_closed(5, title="Random event")
+        )
+        assert detect_strategy_type(positions) == "MIXED"
+
+    def test_empty(self):
+        assert detect_strategy_type([]) == "UNKNOWN"
+
+
+class TestClassifyCategoryEsports:
+    def test_esports_keywords(self):
+        assert classify_category("LCK Spring 2025 winner") == "ESPORTS"
+        assert classify_category("Valorant Champions Tour") == "ESPORTS"
+        assert classify_category("Dota 2 International winner") == "ESPORTS"
+        assert classify_category("CS2 Major winner") == "ESPORTS"

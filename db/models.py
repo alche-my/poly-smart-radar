@@ -22,6 +22,8 @@ _TABLES = {
             timing_quality REAL DEFAULT 0,
             pnl REAL DEFAULT 0,
             volume REAL DEFAULT 0,
+            trader_type TEXT DEFAULT 'UNKNOWN',
+            strategy_type TEXT DEFAULT 'UNKNOWN',
             last_updated TIMESTAMP
         )
     """,
@@ -126,8 +128,8 @@ def upsert_trader(db_path: str, trader: dict) -> None:
                 wallet_address, username, profile_image, x_username,
                 trader_score, category_scores, avg_position_size,
                 total_closed, win_rate, roi, timing_quality,
-                pnl, volume, last_updated
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                pnl, volume, trader_type, strategy_type, last_updated
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(wallet_address) DO UPDATE SET
                 username=excluded.username,
                 profile_image=excluded.profile_image,
@@ -141,6 +143,8 @@ def upsert_trader(db_path: str, trader: dict) -> None:
                 timing_quality=excluded.timing_quality,
                 pnl=excluded.pnl,
                 volume=excluded.volume,
+                trader_type=excluded.trader_type,
+                strategy_type=excluded.strategy_type,
                 last_updated=excluded.last_updated
             """,
             (
@@ -157,6 +161,8 @@ def upsert_trader(db_path: str, trader: dict) -> None:
                 trader.get("timing_quality", 0),
                 trader.get("pnl", 0),
                 trader.get("volume", 0),
+                trader.get("trader_type", "UNKNOWN"),
+                trader.get("strategy_type", "UNKNOWN"),
                 datetime.utcnow().isoformat(),
             ),
         )

@@ -4,6 +4,7 @@ import math
 import re
 import statistics
 from collections import defaultdict
+from datetime import datetime
 
 import config
 from api.data_api import DataApiClient
@@ -23,6 +24,11 @@ _CATEGORY_KEYWORDS = {
     "CRYPTO": [
         "bitcoin", "btc", "ethereum", "eth", "crypto", "token", "defi",
         "blockchain", "solana", "sol", "nft", "coin", "binance", "mining",
+    ],
+    "ESPORTS": [
+        "league of legends", "dota", "csgo", "cs2", "counter-strike",
+        "valorant", "overwatch", "esports", "e-sports", "starcraft",
+        "lck", "lpl", "lec", "lcs", "worlds 20",
     ],
     "SPORTS": [
         "nba", "nfl", "mlb", "nhl", "soccer", "football", "basketball",
@@ -134,6 +140,130 @@ def calc_category_scores(closed_positions: list[dict]) -> dict[str, float]:
     return scores
 
 
+def classify_trader_type(
+    closed: list[dict], pnl: float, volume: float,
+) -> tuple[str, list[str]]:
+    """Classify trader as HUMAN or ALGO based on behavioral signals.
+
+    Returns (type, list_of_signals) where signals explain why ALGO was detected.
+    """
+    total = len(closed)
+    if total < 5:
+        return "UNKNOWN", []
+
+    wins = sum(1 for p in closed if float(p.get("realizedPnl", 0)) > 0)
+    wr = wins / total
+
+    # CV of position sizes
+    bought = [float(p.get("totalBought", 0)) for p in closed if float(p.get("totalBought", 0)) > 0]
+    if len(bought) > 1:
+        avg_b = statistics.mean(bought)
+        std_b = statistics.stdev(bought)
+        cv_b = std_b / avg_b if avg_b > 0 else 999
+    else:
+        cv_b = 999
+
+    # Frequency and 24/7 activity from timestamps
+    timestamps = []
+    blocks = {"00-06": 0, "06-12": 0, "12-18": 0, "18-24": 0}
+    for p in closed:
+        ts = p.get("timestamp")
+        if ts:
+            try:
+                dt = datetime.utcfromtimestamp(int(ts))
+                timestamps.append(dt)
+                h = dt.hour
+                if h < 6:
+                    blocks["00-06"] += 1
+                elif h < 12:
+                    blocks["06-12"] += 1
+                elif h < 18:
+                    blocks["12-18"] += 1
+                else:
+                    blocks["18-24"] += 1
+            except (ValueError, TypeError):
+                pass
+
+    active_blocks = sum(1 for v in blocks.values() if v > 0)
+    ts_sorted = sorted(timestamps)
+    span_days = max((ts_sorted[-1] - ts_sorted[0]).days, 1) if len(ts_sorted) > 1 else 1
+    freq = total / span_days
+
+    # Unique markets
+    n_markets = len(set(p.get("conditionId", "") for p in closed))
+
+    # Accumulate signals
+    signals = []
+    if total >= 200:
+        signals.append("high_volume")
+    if wr > 0.95 and total > 30:
+        signals.append("high_wr")
+    if cv_b < 0.5 and total > 10:
+        signals.append("uniform_sizes")
+    if freq > 2.0:
+        signals.append("high_freq")
+    if active_blocks == 4:
+        signals.append("24/7")
+    if volume > 0 and pnl > 0 and volume / pnl > 10:
+        signals.append("high_turnover")
+    if n_markets > 30:
+        signals.append("high_diversity")
+
+    trader_type = "ALGO" if len(signals) >= 2 else "HUMAN"
+    return trader_type, signals
+
+
+def detect_strategy_type(closed: list[dict]) -> str:
+    """Detect dominant trading strategy/domain from closed positions.
+
+    Returns one of: SPORTS, POLITICS, CRYPTO, ESPORTS, CULTURE, TECH, FINANCE,
+    MARKET_MAKER, LONGSHOT, MIXED, UNKNOWN.
+    """
+    if not closed:
+        return "UNKNOWN"
+
+    total = len(closed)
+
+    # 1. Check for market making (both-sides trading)
+    by_market: dict[str, list[dict]] = defaultdict(list)
+    for p in closed:
+        cid = p.get("conditionId", "")
+        if cid:
+            by_market[cid].append(p)
+
+    if by_market:
+        both_sides = sum(
+            1 for ps in by_market.values()
+            if len(set(p.get("outcome", "").upper() for p in ps)) > 1
+        )
+        both_sides_pct = both_sides / len(by_market)
+        if both_sides_pct > 0.20:
+            return "MARKET_MAKER"
+
+    # 2. Check for longshot strategy (majority at extreme low prices)
+    low_price_count = sum(
+        1 for p in closed if float(p.get("avgPrice", 0)) < 0.15
+    )
+    if total > 0 and low_price_count / total > 0.40:
+        return "LONGSHOT"
+
+    # 3. Domain detection from titles
+    domain_counts: dict[str, int] = defaultdict(int)
+    for p in closed:
+        title = p.get("title", "") or p.get("eventTitle", "") or ""
+        cat = classify_category(title)
+        if cat:
+            domain_counts[cat] += 1
+
+    if domain_counts:
+        dominant = max(domain_counts, key=domain_counts.get)
+        dominant_pct = domain_counts[dominant] / total
+        if dominant_pct > 0.40:
+            return dominant
+
+    return "MIXED"
+
+
 class WatchlistBuilder:
     def __init__(self, data_api: DataApiClient, gamma_api: GammaApiClient, db_path: str):
         self.data_api = data_api
@@ -236,8 +366,18 @@ class WatchlistBuilder:
         consistency = calc_consistency(win_rate, len(closed))
         cat_scores = calc_category_scores(closed)
 
+        volume = lb_data.get("volume", 0)
+        trader_type, algo_signals = classify_trader_type(closed, pnl, volume)
+        strategy_type = detect_strategy_type(closed)
+
         # Username from leaderboard; wallet prefix as fallback
         username = lb_data.get("username") or wallet[:10]
+
+        logger.info(
+            "  %s: %s/%s, WR %.0f%%, %d closed, signals=%s",
+            username, trader_type, strategy_type,
+            win_rate * 100, len(closed), algo_signals or "-",
+        )
 
         return {
             "wallet_address": wallet,
@@ -245,7 +385,7 @@ class WatchlistBuilder:
             "profile_image": lb_data.get("profile_image"),
             "x_username": None,
             "pnl": pnl,
-            "volume": lb_data.get("volume", 0),
+            "volume": volume,
             "win_rate": round(win_rate, 4),
             "roi": round(roi, 4),
             "consistency": round(consistency, 4),
@@ -254,6 +394,8 @@ class WatchlistBuilder:
             "avg_position_size": 0,
             "total_closed": len(closed),
             "category_scores": cat_scores,
+            "trader_type": trader_type,
+            "strategy_type": strategy_type,
             "trader_score": 0.0,  # filled after normalization
         }
 

@@ -2,12 +2,15 @@ import json
 import logging
 from datetime import datetime
 
+import aiohttp
+
 import config
 from db.models import get_unsent_signals, mark_signal_sent
 
 logger = logging.getLogger(__name__)
 
 _TIER_EMOJI = {1: "\U0001f534", 2: "\U0001f7e1", 3: "\U0001f535"}
+_TG_TIMEOUT = aiohttp.ClientTimeout(total=15)
 
 
 def format_time_ago(timestamp: str) -> str:
@@ -152,6 +155,12 @@ class AlertSender:
         self.bot_token = bot_token
         self.chat_id = chat_id
         self.db_path = db_path
+        self._session: aiohttp.ClientSession | None = None
+
+    async def _ensure_session(self) -> aiohttp.ClientSession:
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(timeout=_TG_TIMEOUT)
+        return self._session
 
     async def send_pending_alerts(self) -> int:
         signals = get_unsent_signals(self.db_path)
@@ -175,21 +184,23 @@ class AlertSender:
             return True
 
         try:
-            import aiohttp
-
+            session = await self._ensure_session()
             url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
             payload = {
                 "chat_id": self.chat_id,
                 "text": text,
                 "disable_web_page_preview": True,
             }
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=payload) as resp:
-                    if resp.status == 200:
-                        return True
-                    body = await resp.text()
-                    logger.error("Telegram API error %s: %s", resp.status, body[:200])
-                    return False
-        except Exception as e:
+            async with session.post(url, json=payload) as resp:
+                if resp.status == 200:
+                    return True
+                body = await resp.text()
+                logger.error("Telegram API error %s: %.200s", resp.status, body)
+                return False
+        except (aiohttp.ClientError, Exception) as e:
             logger.error("Failed to send Telegram alert: %s", e)
             return False
+
+    async def close(self) -> None:
+        if self._session and not self._session.closed:
+            await self._session.close()

@@ -340,16 +340,27 @@ def insert_signal(db_path: str, signal: dict) -> int:
         conn.close()
 
 
+_SIGNAL_UPDATABLE_FIELDS = frozenset({
+    "signal_score", "peak_score", "tier", "status",
+    "traders_involved", "current_price", "updated_at", "sent",
+})
+
+
 def update_signal(db_path: str, signal_id: int, updates: dict) -> None:
     conn = _get_connection(db_path)
     try:
         fields = []
         values = []
         for key, val in updates.items():
+            if key not in _SIGNAL_UPDATABLE_FIELDS:
+                logger.warning("update_signal: ignoring unknown field %r", key)
+                continue
             if key == "traders_involved":
                 val = json.dumps(val)
             fields.append(f"{key} = ?")
             values.append(val)
+        if not fields:
+            return
         values.append(signal_id)
         conn.execute(
             f"UPDATE signals SET {', '.join(fields)} WHERE id = ?",

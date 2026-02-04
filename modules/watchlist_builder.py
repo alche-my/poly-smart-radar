@@ -8,6 +8,7 @@ from collections import defaultdict
 from datetime import datetime
 
 import config
+from api.base import is_valid_wallet
 from api.data_api import DataApiClient
 from api.gamma_api import GammaApiClient
 from db.models import upsert_trader
@@ -298,7 +299,7 @@ def classify_trader_type(
                     blocks["12-18"] += 1
                 else:
                     blocks["18-24"] += 1
-            except (ValueError, TypeError):
+            except (ValueError, TypeError, OSError):
                 pass
 
     active_blocks = sum(1 for v in blocks.values() if v > 0)
@@ -469,11 +470,7 @@ def _build_positions_from_activity(
 
 
 def _extract_recent_bets(closed: list[dict], n: int = 10) -> list[dict]:
-    """Extract last N closed positions as compact bet records (most recent first).
-
-    The API returns positions sorted by realizedPnl desc, so we re-sort
-    by timestamp to show the trader's actual recent activity.
-    """
+    """Extract last N closed positions as compact bet records (most recent first)."""
     sorted_closed = sorted(
         closed,
         key=lambda p: int(p.get("timestamp", 0) or 0),
@@ -511,8 +508,8 @@ class WatchlistBuilder:
             wallet_info = dict(list(wallet_info.items())[:limit])
             logger.info("Limited to %d wallets for testing", limit)
 
-        # 2. Score each trader (3 concurrent workers)
-        sem = asyncio.Semaphore(3)
+        # 2. Score each trader (5 concurrent workers)
+        sem = asyncio.Semaphore(5)
         total = len(wallet_info)
         processed = 0
 
@@ -556,14 +553,22 @@ class WatchlistBuilder:
         return len(traders)
 
     async def _collect_wallets(self) -> dict[str, dict]:
+        """Gather unique wallets from all leaderboard categories concurrently."""
         wallet_info: dict[str, dict] = {}
-        for cat in _CATEGORIES:
-            entries = await self.data_api.get_leaderboard_all(
+
+        # Fetch all categories in parallel
+        tasks = [
+            self.data_api.get_leaderboard_all(
                 category=cat, time_period="ALL", order_by="PNL", max_results=200,
             )
+            for cat in _CATEGORIES
+        ]
+        all_entries = await asyncio.gather(*tasks)
+
+        for entries in all_entries:
             for entry in entries:
                 addr = entry.get("proxyWallet") or entry.get("userAddress") or entry.get("address", "")
-                if not addr:
+                if not addr or not is_valid_wallet(addr):
                     continue
                 pnl = float(entry.get("pnl", 0) or 0)
                 vol = float(entry.get("vol", 0) or entry.get("volume", 0) or 0)
@@ -587,40 +592,29 @@ class WatchlistBuilder:
 
         username = lb_data.get("username") or wallet[:10]
 
-        # --- Fetch chronological activity (last 30d) via /activity ---
+        # --- 1. Freshness check: single API call (limit=1) ---
         now_ts = int(datetime.utcnow().timestamp())
-        start_ts = now_ts - 30 * 86400
+        cutoff_ts = now_ts - config.ACTIVE_WINDOW_DAYS * 86400
 
-        activity = await self.data_api.get_activity_all(
-            wallet, types="TRADE,REDEEM", start=start_ts,
+        recent_activity = await self.data_api.get_activity(
+            wallet, types="TRADE", start=cutoff_ts, limit=1,
+        )
+        if not recent_activity:
+            logger.info("  %s: skipped (inactive >%dd)", username, config.ACTIVE_WINDOW_DAYS)
+            return None
+
+        # --- 2. Closed positions via /closed-positions?sortBy=TIMESTAMP ---
+        since_ts = now_ts - config.SCORING_WINDOW_DAYS * 86400
+        closed = await self.data_api.get_closed_positions_chronological(
+            wallet, since_ts=since_ts,
         )
 
-        if not activity:
-            logger.info("  %s: skipped (no activity in 30d)", username)
-            return None
-
-        # Freshness check: latest event must be within ACTIVE_WINDOW_DAYS
-        cutoff_ts = now_ts - config.ACTIVE_WINDOW_DAYS * 86400
-        latest_ts = max(int(a.get("timestamp", 0) or 0) for a in activity)
-        if latest_ts < cutoff_ts:
-            logger.info(
-                "  %s: skipped (inactive >%dd)", username, config.ACTIVE_WINDOW_DAYS,
-            )
-            return None
-
-        # Open positions — needed to exclude unresolved markets from WR
-        open_positions = await self.data_api.get_positions_all(wallet)
-        open_conditions = {p.get("conditionId", "") for p in open_positions}
-
-        # Build synthetic position records from activity
-        closed = _build_positions_from_activity(activity, open_conditions)
-
         if len(closed) < config.MIN_CLOSED_POSITIONS:
-            logger.info("  %s: skipped (%d resolved markets < %d)",
+            logger.info("  %s: skipped (%d closed positions < %d)",
                         username, len(closed), config.MIN_CLOSED_POSITIONS)
             return None
 
-        # All existing calc_* functions work on the synthetic positions
+        # --- 3. Calculate metrics (all calc_* functions work on these) ---
         win_rate = calc_win_rate(closed)
         roi = calc_roi(closed)
         timing = calc_timing_quality(closed)
@@ -634,7 +628,7 @@ class WatchlistBuilder:
         recent_bets = _extract_recent_bets(closed)
 
         logger.info(
-            "  %s: %s [%s], WR %.0f%%, %d markets, signals=%s",
+            "  %s: %s [%s], WR %.0f%%, %d closed, signals=%s",
             username, trader_type, ", ".join(domain_tags),
             win_rate * 100, len(closed), algo_signals or "-",
         )

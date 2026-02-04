@@ -2,7 +2,9 @@ import json
 import sqlite3
 from datetime import datetime, timedelta
 
+from api.base import is_valid_wallet
 from db.models import (
+    _SIGNAL_UPDATABLE_FIELDS,
     init_db,
     upsert_trader,
     get_traders,
@@ -277,3 +279,41 @@ class TestSignals:
         parsed = json.loads(unsent[0]["traders_involved"])
         assert len(parsed) == 2
         assert parsed[0]["wallet"] == "0xA"
+
+    def test_update_signal_rejects_unknown_fields(self, db_path):
+        """update_signal silently ignores fields not in the whitelist."""
+        sid = insert_signal(db_path, self._make_signal())
+        # "drop_table" is not in _SIGNAL_UPDATABLE_FIELDS
+        update_signal(db_path, sid, {"status": "WEAKENING", "drop_table": "evil"})
+        unsent = get_unsent_signals(db_path)
+        # The valid field should be updated
+        assert unsent[0]["status"] == "WEAKENING"
+
+    def test_signal_updatable_fields_whitelist(self):
+        """All expected fields are in the whitelist."""
+        expected = {"signal_score", "peak_score", "tier", "status",
+                    "traders_involved", "current_price", "updated_at", "sent"}
+        assert _SIGNAL_UPDATABLE_FIELDS == expected
+
+
+class TestWalletValidation:
+    def test_valid_wallet(self):
+        assert is_valid_wallet("0x1234567890abcdef1234567890abcdef12345678")
+
+    def test_valid_uppercase(self):
+        assert is_valid_wallet("0xABCDEF1234567890ABCDEF1234567890ABCDEF12")
+
+    def test_missing_prefix(self):
+        assert not is_valid_wallet("1234567890abcdef1234567890abcdef12345678")
+
+    def test_too_short(self):
+        assert not is_valid_wallet("0x1234")
+
+    def test_too_long(self):
+        assert not is_valid_wallet("0x1234567890abcdef1234567890abcdef1234567890")
+
+    def test_invalid_chars(self):
+        assert not is_valid_wallet("0xGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG")
+
+    def test_empty_string(self):
+        assert not is_valid_wallet("")

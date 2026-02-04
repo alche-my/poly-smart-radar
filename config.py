@@ -19,6 +19,7 @@ MEDIUM_THRESHOLD = 8.0
 MIN_CLOSED_POSITIONS = 10
 MIN_TRADERS_FOR_SIGNAL = 2
 ACTIVE_WINDOW_DAYS = 14  # skip traders with no activity in this many days
+SCORING_WINDOW_DAYS = 90  # closed positions window for WR / ROI scoring
 
 # --- Signal Window ---
 SIGNAL_WINDOW_HOURS = 24

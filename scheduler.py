@@ -103,4 +103,5 @@ class RadarScheduler:
         self.stop()
         await self.data_api.close()
         await self.gamma_api.close()
+        await self.alert_sender.close()
         logger.info("All API clients closed")

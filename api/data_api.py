@@ -10,6 +10,8 @@ class DataApiClient(BaseApiClient):
     def __init__(self, base_url: str = config.DATA_API_BASE_URL):
         super().__init__(base_url)
 
+    # ---- Leaderboard ----
+
     async def get_leaderboard(
         self,
         category: str = "OVERALL",
@@ -35,7 +37,7 @@ class DataApiClient(BaseApiClient):
         order_by: str = "PNL",
         max_results: int = 200,
     ) -> list[dict]:
-        all_results = []
+        all_results: list[dict] = []
         offset = 0
         page_size = 50
         while offset < max_results:
@@ -51,6 +53,8 @@ class DataApiClient(BaseApiClient):
             all_results.extend(batch)
             offset += page_size
         return all_results[:max_results]
+
+    # ---- Positions (open) ----
 
     async def get_positions(self, user: str, limit: int = 500, offset: int = 0) -> list[dict]:
         params = {"user": user, "limit": limit, "offset": offset}
@@ -70,44 +74,75 @@ class DataApiClient(BaseApiClient):
             if len(batch) < page_size:
                 break
             offset += page_size
+            if offset > 10_000:  # safety cap
+                break
         return all_results
 
+    # ---- Closed positions ----
+
     async def get_closed_positions(
-        self, user: str, limit: int = 100, offset: int = 0
+        self,
+        user: str,
+        limit: int = 100,
+        offset: int = 0,
+        sort_by: str = "REALIZEDPNL",
+        sort_direction: str = "DESC",
     ) -> list[dict]:
-        params = {"user": user, "limit": limit, "offset": offset}
+        params = {
+            "user": user,
+            "limit": limit,
+            "offset": offset,
+            "sortBy": sort_by,
+            "sortDirection": sort_direction,
+        }
         result = await self._get("/closed-positions", params)
         return result if isinstance(result, list) else []
 
-    async def get_closed_positions_all(
-        self, user: str, max_results: int = 0
+    async def get_closed_positions_chronological(
+        self, user: str, since_ts: int = 0, max_results: int = 500,
     ) -> list[dict]:
-        """Fetch closed positions with pagination.
+        """Fetch closed positions sorted by TIMESTAMP DESC (most recent first).
 
-        max_results: 0 means fetch ALL positions (up to 50 000 safety cap).
-        NOTE: the API returns positions sorted by realizedPnl descending.
-        To get accurate win-rate we must paginate through all positions.
+        Paginates until we've either collected `max_results` positions or gone
+        past the `since_ts` cutoff.  Much more efficient than the old
+        PnL-sorted approach because we can stop early.
         """
-        all_results = []
+        all_results: list[dict] = []
         offset = 0
-        page_size = 50  # API returns max 50 per request
-        cap = max_results if max_results > 0 else 50_000
-        while offset < cap:
-            batch = await self.get_closed_positions(user, limit=page_size, offset=offset)
+        page_size = 50  # API returns max 50 per page for /closed-positions
+        while len(all_results) < max_results:
+            batch = await self.get_closed_positions(
+                user, limit=page_size, offset=offset,
+                sort_by="TIMESTAMP", sort_direction="DESC",
+            )
             if not batch:
                 break
-            all_results.extend(batch)
-            if len(batch) < page_size:
+
+            hit_cutoff = False
+            for pos in batch:
+                ts = int(pos.get("timestamp", 0) or 0)
+                if since_ts and ts < since_ts:
+                    hit_cutoff = True
+                    break
+                all_results.append(pos)
+
+            if hit_cutoff or len(batch) < page_size:
                 break
             offset += page_size
-        return all_results[:max_results] if max_results > 0 else all_results
+            if offset > 10_000:  # safety: API supports offset up to 100000
+                break
+        return all_results
+
+    # ---- Trades ----
 
     async def get_trades(
-        self, user: str, limit: int = 100, offset: int = 0
+        self, user: str, limit: int = 100, offset: int = 0,
     ) -> list[dict]:
         params = {"user": user, "limit": limit, "offset": offset}
         result = await self._get("/trades", params)
         return result if isinstance(result, list) else []
+
+    # ---- Activity ----
 
     async def get_activity(
         self, user: str, *, types: str | None = None,
@@ -148,6 +183,8 @@ class DataApiClient(BaseApiClient):
                 break
             offset += page_size
         return all_results
+
+    # ---- Misc ----
 
     async def get_holders(self, market: str, limit: int = 20) -> list[dict]:
         params = {"market": market, "limit": limit}

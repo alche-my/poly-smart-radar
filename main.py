@@ -42,7 +42,7 @@ async def rebuild_watchlist(scheduler: RadarScheduler) -> None:
                 i,
                 t.get("username") or t["wallet_address"][:10],
                 t.get("trader_score", 0),
-                t.get("timing_quality", 0) if isinstance(t.get("timing_quality", 0), float) else 0,
+                t.get("timing_quality") or 0,
                 t.get("win_rate", 0) * 100,
                 t.get("total_closed", 0),
                 pnl_str,

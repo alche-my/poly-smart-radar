@@ -258,6 +258,23 @@ def calc_category_scores(closed_positions: list[dict]) -> dict[str, float]:
     return scores
 
 
+# Signal weights for ALGO classification
+# Strong signals (clearly automated behavior) = 3 points
+# Medium signals (suspicious but possible for humans) = 2 points
+# Weak signals (could be active human trader) = 1 point
+_ALGO_SIGNAL_WEIGHTS = {
+    "24/7": 3,            # Round-the-clock = bot
+    "burst_trading": 3,   # Many positions in short time = bot
+    "uniform_sizes": 2,   # Same position sizes = systematic
+    "high_turnover": 2,   # High volume/pnl ratio = scalping
+    "high_wr": 2,         # >95% WR suspicious
+    "high_volume": 1,     # Many positions (could be active human)
+    "high_freq": 1,       # 5+/day (could be day trader)
+    "high_diversity": 1,  # Many markets (could be diversified human)
+}
+_ALGO_WEIGHT_THRESHOLD = 4  # Need 4+ points to classify as ALGO
+
+
 def classify_trader_type(
     closed: list[dict], pnl: float, volume: float,
 ) -> tuple[str, list[str]]:
@@ -265,6 +282,8 @@ def classify_trader_type(
 
     Returns (type, list_of_signals) where signals explain the classification.
     MM takes precedence — they trade both sides for spread, not prediction.
+    Uses weighted signals: strong signals (24/7, burst) = 3pts, medium = 2pts, weak = 1pt.
+    Requires 4+ points for ALGO classification.
     """
     total = len(closed)
     if total < 5:
@@ -285,7 +304,7 @@ def classify_trader_type(
     if by_market:
         both_sides = sum(1 for outcomes in by_market.values() if len(outcomes) > 1)
         mm_ratio = both_sides / len(by_market)
-        if mm_ratio > 0.20:
+        if mm_ratio > 0.35:  # Raised from 20% to 35%
             return "MM", [f"both_sides_{mm_ratio:.0%}"]
 
     # --- ALGO detection ---
@@ -326,6 +345,18 @@ def classify_trader_type(
     span_days = max((ts_sorted[-1] - ts_sorted[0]).days, 1) if len(ts_sorted) > 1 else 1
     freq = total / span_days
 
+    # Burst detection: median gap between consecutive positions
+    # If median gap < 30 minutes with 50+ positions, it's burst trading
+    burst_trading = False
+    if len(ts_sorted) >= 50:
+        gaps_minutes = []
+        for i in range(1, len(ts_sorted)):
+            gap = (ts_sorted[i] - ts_sorted[i - 1]).total_seconds() / 60
+            gaps_minutes.append(gap)
+        if gaps_minutes:
+            median_gap = statistics.median(gaps_minutes)
+            burst_trading = median_gap < 30  # Less than 30 min between positions
+
     # 24/7 sustained activity: require minimum trades in EACH block
     min_per_block = 10
     sustained_24_7 = all(v >= min_per_block for v in blocks.values())
@@ -341,16 +372,20 @@ def classify_trader_type(
         signals.append("high_wr")
     if cv_b < 0.5 and total > 10:
         signals.append("uniform_sizes")
-    if freq > 2.0:
+    if freq > 5.0:  # Raised from 2.0 to 5.0
         signals.append("high_freq")
     if sustained_24_7:
         signals.append("24/7")
+    if burst_trading:
+        signals.append("burst_trading")
     if volume > 0 and pnl > 0 and volume / pnl > 10:
         signals.append("high_turnover")
     if n_markets > 30:
         signals.append("high_diversity")
 
-    trader_type = "ALGO" if len(signals) >= 2 else "HUMAN"
+    # Calculate weighted score
+    total_weight = sum(_ALGO_SIGNAL_WEIGHTS.get(s, 0) for s in signals)
+    trader_type = "ALGO" if total_weight >= _ALGO_WEIGHT_THRESHOLD else "HUMAN"
     return trader_type, signals
 
 

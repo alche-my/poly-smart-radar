@@ -232,14 +232,29 @@ class SignalDetector:
         traders_data: list[dict],
         top10_wallets: set[str],
     ) -> int | None:
-        if num_traders >= 3 and signal_score > config.HIGH_THRESHOLD:
+        """Determine signal tier. Only HUMAN traders count for multi-trader requirement.
+
+        Tier 1: 2+ HUMAN traders with high score (strong consensus)
+        Tier 2: 1+ HUMAN trader(s) with medium score (notable signal)
+
+        ALGO/MM-only signals are not created (return None).
+        """
+        # Count by trader type
+        human_traders = [t for t in traders_data if t.get("trader_type") == "HUMAN"]
+        num_humans = len(human_traders)
+
+        # No HUMAN traders = no signal worth alerting
+        if num_humans == 0:
+            return None
+
+        # Tier 1: 2+ HUMAN traders with strong consensus
+        if num_humans >= 2 and signal_score > config.HIGH_THRESHOLD:
             return 1
-        if num_traders >= config.MIN_TRADERS_FOR_SIGNAL and signal_score > config.MEDIUM_THRESHOLD:
+
+        # Tier 2: At least 1 HUMAN with decent score
+        if num_humans >= 1 and signal_score > config.MEDIUM_THRESHOLD:
             return 2
-        if num_traders == 1:
-            td = traders_data[0]
-            if td["wallet_address"] in top10_wallets and td["conviction"] > 2.0:
-                return 3
+
         return None
 
     def _update_active_signals(

@@ -302,10 +302,13 @@ def classify_trader_type(
             except (ValueError, TypeError, OSError):
                 pass
 
-    active_blocks = sum(1 for v in blocks.values() if v > 0)
     ts_sorted = sorted(timestamps)
     span_days = max((ts_sorted[-1] - ts_sorted[0]).days, 1) if len(ts_sorted) > 1 else 1
     freq = total / span_days
+
+    # 24/7 sustained activity: require minimum trades in EACH block
+    min_per_block = 10
+    sustained_24_7 = all(v >= min_per_block for v in blocks.values())
 
     # Unique markets
     n_markets = len(set(p.get("conditionId", "") for p in closed))
@@ -320,7 +323,7 @@ def classify_trader_type(
         signals.append("uniform_sizes")
     if freq > 2.0:
         signals.append("high_freq")
-    if active_blocks == 4:
+    if sustained_24_7:
         signals.append("24/7")
     if volume > 0 and pnl > 0 and volume / pnl > 10:
         signals.append("high_turnover")

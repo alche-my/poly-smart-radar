@@ -36,5 +36,8 @@ FRESHNESS_TIERS = {
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
+# --- MiniApp ---
+MINIAPP_URL = os.getenv("MINIAPP_URL", "https://your-domain.com/miniapp")
+
 # --- Database ---
 DB_PATH = os.path.join(os.path.dirname(__file__), "data", "radar.db")

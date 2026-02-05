@@ -405,3 +405,14 @@ def mark_signal_sent(db_path: str, signal_id: int) -> None:
         conn.commit()
     finally:
         conn.close()
+
+
+def mark_all_signals_sent(db_path: str) -> int:
+    """Mark all unsent signals as sent (clear backlog)."""
+    conn = _get_connection(db_path)
+    try:
+        cur = conn.execute("UPDATE signals SET sent = 1 WHERE sent = 0")
+        conn.commit()
+        return cur.rowcount
+    finally:
+        conn.close()

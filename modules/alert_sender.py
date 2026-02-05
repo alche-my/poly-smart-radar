@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from datetime import datetime
@@ -11,6 +12,9 @@ logger = logging.getLogger(__name__)
 
 _TIER_EMOJI = {1: "\U0001f534", 2: "\U0001f7e1", 3: "\U0001f535"}
 _TG_TIMEOUT = aiohttp.ClientTimeout(total=15)
+_SEND_DELAY = 0.5  # seconds between sends (Telegram limit ~30/sec)
+_MAX_ALERTS_PER_CYCLE = 30  # limit alerts per cycle to avoid rate limits
+_MAX_RETRIES = 3
 
 
 def format_time_ago(timestamp: str) -> str:
@@ -167,15 +171,25 @@ class AlertSender:
         if not signals:
             return 0
 
+        # Limit alerts per cycle to avoid Telegram rate limits
+        batch = signals[:_MAX_ALERTS_PER_CYCLE]
+        if len(signals) > _MAX_ALERTS_PER_CYCLE:
+            logger.info(
+                "Limiting to %d/%d alerts this cycle",
+                _MAX_ALERTS_PER_CYCLE, len(signals),
+            )
+
         sent_count = 0
-        for signal in signals:
+        for signal in batch:
             message = format_signal_message(signal)
             ok = await self._send(message)
             if ok:
                 mark_signal_sent(self.db_path, signal["id"])
                 sent_count += 1
+            # Delay between sends to respect rate limits
+            await asyncio.sleep(_SEND_DELAY)
 
-        logger.info("Sent %d/%d alerts", sent_count, len(signals))
+        logger.info("Sent %d/%d alerts", sent_count, len(batch))
         return sent_count
 
     async def _send(self, text: str) -> bool:
@@ -183,23 +197,57 @@ class AlertSender:
             logger.info("Telegram not configured, logging alert:\n%s", text)
             return True
 
-        try:
-            session = await self._ensure_session()
-            url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
-            payload = {
-                "chat_id": self.chat_id,
-                "text": text,
-                "disable_web_page_preview": True,
-            }
-            async with session.post(url, json=payload) as resp:
-                if resp.status == 200:
-                    return True
-                body = await resp.text()
-                logger.error("Telegram API error %s: %.200s", resp.status, body)
+        session = await self._ensure_session()
+        url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
+        payload = {
+            "chat_id": self.chat_id,
+            "text": text,
+            "disable_web_page_preview": True,
+        }
+
+        for attempt in range(1, _MAX_RETRIES + 1):
+            try:
+                async with session.post(url, json=payload) as resp:
+                    if resp.status == 200:
+                        return True
+
+                    body = await resp.text()
+
+                    # Handle rate limiting (429)
+                    if resp.status == 429:
+                        try:
+                            data = json.loads(body)
+                            retry_after = data.get("parameters", {}).get("retry_after", 10)
+                        except (json.JSONDecodeError, KeyError):
+                            retry_after = 10
+
+                        if attempt < _MAX_RETRIES:
+                            logger.warning(
+                                "Telegram rate limit, retry %d/%d in %ds",
+                                attempt, _MAX_RETRIES, retry_after,
+                            )
+                            await asyncio.sleep(retry_after)
+                            continue
+                        else:
+                            logger.error("Telegram rate limit exceeded after %d retries", _MAX_RETRIES)
+                            return False
+
+                    logger.error("Telegram API error %s: %.200s", resp.status, body)
+                    return False
+
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                if attempt < _MAX_RETRIES:
+                    wait = 2 ** attempt
+                    logger.warning(
+                        "Telegram send error: %s, retry %d/%d in %ds",
+                        e, attempt, _MAX_RETRIES, wait,
+                    )
+                    await asyncio.sleep(wait)
+                    continue
+                logger.error("Failed to send Telegram alert after %d retries: %s", _MAX_RETRIES, e)
                 return False
-        except (aiohttp.ClientError, Exception) as e:
-            logger.error("Failed to send Telegram alert: %s", e)
-            return False
+
+        return False
 
     async def close(self) -> None:
         if self._session and not self._session.closed:

@@ -261,14 +261,34 @@ def calc_category_scores(closed_positions: list[dict]) -> dict[str, float]:
 def classify_trader_type(
     closed: list[dict], pnl: float, volume: float,
 ) -> tuple[str, list[str]]:
-    """Classify trader as HUMAN or ALGO based on behavioral signals.
+    """Classify trader as HUMAN, ALGO, or MM (Market Maker).
 
-    Returns (type, list_of_signals) where signals explain why ALGO was detected.
+    Returns (type, list_of_signals) where signals explain the classification.
+    MM takes precedence — they trade both sides for spread, not prediction.
     """
     total = len(closed)
     if total < 5:
         return "UNKNOWN", []
 
+    # --- Market Maker detection (priority check) ---
+    # Group by market and check if trading both YES and NO
+    by_market: dict[str, set[str]] = {}
+    for p in closed:
+        cid = p.get("conditionId", "")
+        if cid:
+            outcome = p.get("outcome", "").upper()
+            if cid not in by_market:
+                by_market[cid] = set()
+            if outcome:
+                by_market[cid].add(outcome)
+
+    if by_market:
+        both_sides = sum(1 for outcomes in by_market.values() if len(outcomes) > 1)
+        mm_ratio = both_sides / len(by_market)
+        if mm_ratio > 0.20:
+            return "MM", [f"both_sides_{mm_ratio:.0%}"]
+
+    # --- ALGO detection ---
     wins = sum(1 for p in closed if float(p.get("realizedPnl", 0)) > 0)
     wr = wins / total
 
@@ -344,7 +364,8 @@ def detect_domain_tags(closed: list[dict]) -> list[str]:
     """Detect all domain tags where 10%+ of positions match.
 
     Returns list of tags like ["Sports", "NBA", "Crypto"] or ["Mixed"].
-    Also detects behavioral tags: "Market Maker", "Longshot".
+    Also detects behavioral tag "Longshot" (40%+ low-price bets).
+    Note: Market Maker is now a trader_type, not a domain tag.
     """
     if not closed:
         return []
@@ -366,21 +387,7 @@ def detect_domain_tags(closed: list[dict]) -> list[str]:
         if count >= threshold:
             tags.append(domain)
 
-    # 3. Behavioral tags
-    by_market: dict[str, list[dict]] = defaultdict(list)
-    for p in closed:
-        cid = p.get("conditionId", "")
-        if cid:
-            by_market[cid].append(p)
-
-    if by_market:
-        both_sides = sum(
-            1 for ps in by_market.values()
-            if len(set(p.get("outcome", "").upper() for p in ps)) > 1
-        )
-        if both_sides / len(by_market) > 0.20:
-            tags.append("Market Maker")
-
+    # 3. Behavioral tag: Longshot player (40%+ bets at <15% odds)
     low_price = sum(1 for p in closed if float(p.get("avgPrice", 0)) < 0.15)
     if total > 0 and low_price / total > 0.40:
         tags.append("Longshot")

@@ -297,6 +297,41 @@ class TestClassifyTraderType:
         trader_type, _ = classify_trader_type(closed, pnl=1000, volume=5000)
         assert trader_type == "UNKNOWN"
 
+    def test_market_maker_type(self):
+        # Trading both YES and NO on >20% of markets → MM type
+        positions = []
+        for i in range(20):
+            positions.append({
+                "realizedPnl": "10", "totalBought": "100", "totalSold": "90",
+                "title": "Event", "outcome": "YES", "avgPrice": "0.5",
+                "conditionId": f"c{i}", "timestamp": str(1700000000 + i * 3600),
+            })
+            positions.append({
+                "realizedPnl": "5", "totalBought": "100", "totalSold": "90",
+                "title": "Event", "outcome": "NO", "avgPrice": "0.5",
+                "conditionId": f"c{i}", "timestamp": str(1700000000 + i * 3600),
+            })
+        trader_type, signals = classify_trader_type(positions, pnl=100_000, volume=500_000)
+        assert trader_type == "MM"
+        assert "both_sides" in signals[0]
+
+    def test_market_maker_takes_precedence(self):
+        # Even with high_volume signals, MM takes precedence
+        positions = []
+        for i in range(200):  # enough for high_volume signal
+            positions.append({
+                "realizedPnl": "10", "totalBought": "100", "totalSold": "90",
+                "title": "Event", "outcome": "YES", "avgPrice": "0.5",
+                "conditionId": f"c{i}", "timestamp": str(1700000000 + i * 3600),
+            })
+            positions.append({
+                "realizedPnl": "5", "totalBought": "100", "totalSold": "90",
+                "title": "Event", "outcome": "NO", "avgPrice": "0.5",
+                "conditionId": f"c{i}", "timestamp": str(1700000000 + i * 3600),
+            })
+        trader_type, _ = classify_trader_type(positions, pnl=100_000, volume=500_000)
+        assert trader_type == "MM"  # Not ALGO, even though volume is high
+
     def test_human_low_signals(self):
         # 20 positions with mixed results and varied sizes → human-like
         closed = [
@@ -332,7 +367,9 @@ class TestDetectStrategyType:
         closed = _make_closed(20, title="LCK Spring Finals winner")
         assert detect_strategy_type(closed) == "Esports"
 
-    def test_market_maker(self):
+    def test_market_maker_returns_mixed(self):
+        # Market Maker is now a trader_type (MM), not a domain tag
+        # So detect_strategy_type returns "Mixed" for positions without domain keywords
         positions = []
         for i in range(20):
             positions.append({
@@ -345,7 +382,7 @@ class TestDetectStrategyType:
                 "title": "Some event", "outcome": "NO", "avgPrice": "0.5",
                 "conditionId": f"c{i}",
             })
-        assert detect_strategy_type(positions) == "Market Maker"
+        assert detect_strategy_type(positions) == "Mixed"
 
     def test_longshot(self):
         closed = _make_closed(20, price="0.05", title="Will something happen?")
@@ -403,7 +440,8 @@ class TestDetectDomainTags:
         assert "NFL" in tags
         assert "Sports" in tags
 
-    def test_market_maker_tag(self):
+    def test_market_maker_no_longer_in_domain_tags(self):
+        # Market Maker is now a trader_type (MM), not a domain tag
         positions = []
         for i in range(20):
             positions.append({
@@ -417,7 +455,7 @@ class TestDetectDomainTags:
                 "conditionId": f"c{i}",
             })
         tags = detect_domain_tags(positions)
-        assert "Market Maker" in tags
+        assert "Market Maker" not in tags
 
     def test_longshot_tag(self):
         closed = _make_closed(20, price="0.05", title="Will X happen?")

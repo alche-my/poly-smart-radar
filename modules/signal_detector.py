@@ -232,20 +232,17 @@ class SignalDetector:
         traders_data: list[dict],
         top10_wallets: set[str],
     ) -> int | None:
-        """Determine signal tier. Only HUMAN traders count for multi-trader requirement.
+        """Determine signal tier based on trader types.
 
         Tier 1: 2+ HUMAN traders with high score (strong consensus)
         Tier 2: 1+ HUMAN trader(s) with medium score (notable signal)
-
-        ALGO/MM-only signals are not created (return None).
+        Tier 3: 3+ ALGO traders consensus (no HUMAN, but notable pattern)
         """
         # Count by trader type
         human_traders = [t for t in traders_data if t.get("trader_type") == "HUMAN"]
+        algo_traders = [t for t in traders_data if t.get("trader_type") == "ALGO"]
         num_humans = len(human_traders)
-
-        # No HUMAN traders = no signal worth alerting
-        if num_humans == 0:
-            return None
+        num_algos = len(algo_traders)
 
         # Tier 1: 2+ HUMAN traders with strong consensus
         if num_humans >= 2 and signal_score > config.HIGH_THRESHOLD:
@@ -254,6 +251,10 @@ class SignalDetector:
         # Tier 2: At least 1 HUMAN with decent score
         if num_humans >= 1 and signal_score > config.MEDIUM_THRESHOLD:
             return 2
+
+        # Tier 3: 3+ ALGO consensus (no humans, but bots agree)
+        if num_humans == 0 and num_algos >= 3:
+            return 3
 
         return None
 

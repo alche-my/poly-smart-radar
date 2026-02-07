@@ -32,12 +32,14 @@ app = FastAPI(
 )
 
 # CORS for MiniApp (Telegram WebView)
+# Note: allow_credentials=False because we use Authorization header, not cookies
+# This avoids CORS misconfiguration (can't use "*" with credentials=True)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Telegram WebView needs this
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # Include routers
@@ -54,11 +56,17 @@ async def health_check():
 @app.get("/api/stats")
 async def get_stats():
     """Get overall statistics."""
+    from fastapi import HTTPException
     from webapp.deps import get_db_path
     from db.models import _get_connection
 
     db_path = get_db_path()
-    conn = _get_connection(db_path)
+    try:
+        conn = _get_connection(db_path)
+    except Exception as e:
+        logger.error("Database connection failed: %s", e)
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
     try:
         # Count signals by tier
         signals_by_tier = {}
@@ -96,5 +104,8 @@ async def get_stats():
                 "algo": algo_count,
             },
         }
+    except Exception as e:
+        logger.error("Stats query failed: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to get stats")
     finally:
         conn.close()

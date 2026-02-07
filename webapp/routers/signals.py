@@ -15,6 +15,10 @@ from webapp.schemas import SignalResponse, SignalListResponse, TraderBrief
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# Allowed values for enum-like fields
+_ALLOWED_STATUS = {"ACTIVE", "WEAKENING", "CLOSED"}
+_ALLOWED_TRADER_TYPE = {"HUMAN", "ALGO", "MM"}
+
 
 def _parse_traders_involved(raw: str | list) -> list[TraderBrief]:
     """Parse traders_involved JSON into TraderBrief list."""
@@ -79,6 +83,18 @@ async def list_signals(
     - **page**: Page number (starts at 1)
     - **page_size**: Number of items per page (max 100)
     """
+    # Validate enum-like parameters
+    if status is not None and status.upper() not in _ALLOWED_STATUS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status. Allowed: {', '.join(_ALLOWED_STATUS)}",
+        )
+    if trader_type is not None and trader_type.upper() not in _ALLOWED_TRADER_TYPE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid trader_type. Allowed: {', '.join(_ALLOWED_TRADER_TYPE)}",
+        )
+
     db_path = get_db_path()
     conn = _get_connection(db_path)
 

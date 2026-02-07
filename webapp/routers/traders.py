@@ -4,6 +4,7 @@ Traders API router.
 
 import json
 import logging
+import re
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -14,6 +15,15 @@ from webapp.schemas import TraderResponse, TraderListResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Wallet address validation pattern
+_WALLET_RE = re.compile(r"^0x[a-fA-F0-9]{40}$")
+
+
+def _validate_wallet(wallet_address: str) -> None:
+    """Validate wallet address format to prevent injection attacks."""
+    if not _WALLET_RE.match(wallet_address):
+        raise HTTPException(status_code=400, detail="Invalid wallet address format")
 
 
 def _parse_json_field(raw: str | list | dict, default=None):
@@ -122,6 +132,7 @@ async def get_trader(wallet_address: str):
     """
     Get a specific trader by wallet address.
     """
+    _validate_wallet(wallet_address)
     db_path = get_db_path()
     conn = _get_connection(db_path)
 
@@ -147,6 +158,7 @@ async def get_trader_signals(
     """
     Get signals where this trader is involved.
     """
+    _validate_wallet(wallet_address)
     db_path = get_db_path()
     conn = _get_connection(db_path)
 

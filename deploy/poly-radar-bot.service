@@ -1,0 +1,27 @@
+# Poly Smart Radar - Telegram Bot
+# Place in /etc/systemd/system/poly-radar-bot.service
+# Then: systemctl daemon-reload && systemctl enable poly-radar-bot
+
+[Unit]
+Description=Poly Smart Radar Telegram Bot
+After=network.target
+
+[Service]
+Type=exec
+User=user
+Group=user
+WorkingDirectory=/home/user/poly-smart-radar
+Environment="PATH=/home/user/poly-smart-radar/venv/bin"
+EnvironmentFile=/home/user/poly-smart-radar/.env
+ExecStart=/home/user/poly-smart-radar/venv/bin/python -m webapp.bot
+Restart=always
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/user/poly-smart-radar/data
+
+[Install]
+WantedBy=multi-user.target

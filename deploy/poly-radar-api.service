@@ -1,0 +1,27 @@
+# Poly Smart Radar - FastAPI Backend
+# Place in /etc/systemd/system/poly-radar-api.service
+# Then: systemctl daemon-reload && systemctl enable poly-radar-api
+
+[Unit]
+Description=Poly Smart Radar API
+After=network.target
+
+[Service]
+Type=exec
+User=user
+Group=user
+WorkingDirectory=/home/user/poly-smart-radar
+Environment="PATH=/home/user/poly-smart-radar/venv/bin"
+EnvironmentFile=/home/user/poly-smart-radar/.env
+ExecStart=/home/user/poly-smart-radar/venv/bin/uvicorn webapp.main:app --host 127.0.0.1 --port 8000 --workers 2
+Restart=always
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/user/poly-smart-radar/data
+
+[Install]
+WantedBy=multi-user.target

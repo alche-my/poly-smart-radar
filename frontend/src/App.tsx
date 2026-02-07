@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { SDKProvider, useLaunchParams, useMainButton, useBackButton } from '@telegram-apps/sdk-react'
 import { AppRoot } from '@telegram-apps/telegram-ui'
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 
@@ -14,28 +13,29 @@ import '@telegram-apps/telegram-ui/dist/styles.css'
 function AppContent() {
   const location = useLocation()
   const navigate = useNavigate()
-  const backButton = useBackButton()
 
-  // Show back button on detail pages
+  // Handle Telegram back button on detail pages
   useEffect(() => {
+    const webapp = window.Telegram?.WebApp
+    if (!webapp) return
+
     const isDetailPage = location.pathname.includes('/signal/') || location.pathname.includes('/trader/')
 
     if (isDetailPage) {
-      backButton.show()
+      webapp.BackButton?.show()
       const handleBack = () => navigate(-1)
-      backButton.on('click', handleBack)
+      webapp.BackButton?.onClick(handleBack)
       return () => {
-        backButton.off('click', handleBack)
-        backButton.hide()
+        webapp.BackButton?.offClick(handleBack)
+        webapp.BackButton?.hide()
       }
     } else {
-      backButton.hide()
+      webapp.BackButton?.hide()
     }
-  }, [location, navigate, backButton])
+  }, [location, navigate])
 
-  // Parse initial tab from URL params
+  // Parse tier filter from URL params
   const params = new URLSearchParams(location.search)
-  const initialTab = params.get('tab')
   const tierFilter = params.get('tier')
 
   return (
@@ -74,13 +74,11 @@ export function App() {
   }
 
   return (
-    <SDKProvider acceptCustomStyles>
-      <AppRoot>
-        <BrowserRouter>
-          <AppContent />
-        </BrowserRouter>
-      </AppRoot>
-    </SDKProvider>
+    <AppRoot>
+      <BrowserRouter>
+        <AppContent />
+      </BrowserRouter>
+    </AppRoot>
   )
 }
 
@@ -100,6 +98,12 @@ declare global {
             last_name?: string
             username?: string
           }
+        }
+        BackButton?: {
+          show: () => void
+          hide: () => void
+          onClick: (callback: () => void) => void
+          offClick: (callback: () => void) => void
         }
       }
     }

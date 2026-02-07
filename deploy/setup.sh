@@ -21,7 +21,14 @@ fi
 # 1. Install system dependencies
 echo "[1/8] Installing system dependencies..."
 apt-get update
-apt-get install -y python3 python3-venv python3-pip nginx certbot python3-certbot-nginx
+apt-get install -y python3 python3-venv python3-pip nginx certbot python3-certbot-nginx curl
+
+# Install Node.js 20.x LTS
+if ! command -v node &> /dev/null; then
+    echo "Installing Node.js 20.x..."
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+    apt-get install -y nodejs
+fi
 
 # 2. Create Python virtual environment
 echo "[2/8] Setting up Python environment..."
@@ -35,13 +42,8 @@ pip install -r requirements.txt
 # 3. Build frontend
 echo "[3/8] Building frontend..."
 cd "$PROJECT_DIR/frontend"
-if command -v npm &> /dev/null; then
-    npm install
-    npm run build
-else
-    echo "WARNING: npm not found. Install Node.js and run manually:"
-    echo "  cd $PROJECT_DIR/frontend && npm install && npm run build"
-fi
+npm install
+npm run build
 
 # 4. Configure Nginx
 echo "[4/8] Configuring Nginx..."

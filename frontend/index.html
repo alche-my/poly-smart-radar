@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Poly Smart Radar</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Navigation tabs -->
+        <nav class="tabs">
+            <button class="tab active" data-tab="signals">Signals</button>
+            <button class="tab" data-tab="traders">Traders</button>
+            <button class="tab" data-tab="dashboard">Dashboard</button>
+        </nav>
+
+        <!-- Signals tab -->
+        <div id="signals-tab" class="tab-content active">
+            <div class="filters">
+                <select id="tier-filter">
+                    <option value="">All Tiers</option>
+                    <option value="1">Tier 1</option>
+                    <option value="2">Tier 2</option>
+                    <option value="3">Tier 3</option>
+                </select>
+                <select id="status-filter">
+                    <option value="">All Status</option>
+                    <option value="ACTIVE">Active</option>
+                    <option value="CLOSED">Closed</option>
+                </select>
+            </div>
+            <div id="signals-list" class="list"></div>
+            <div id="signals-empty" class="empty-state hidden">No signals yet. The scanner needs to detect trader convergence first.</div>
+        </div>
+
+        <!-- Traders tab -->
+        <div id="traders-tab" class="tab-content">
+            <div id="traders-list" class="list"></div>
+            <div id="traders-empty" class="empty-state hidden">No traders in watchlist. Run the watchlist builder first.</div>
+        </div>
+
+        <!-- Dashboard tab -->
+        <div id="dashboard-tab" class="tab-content">
+            <div id="dashboard-content" class="dashboard"></div>
+        </div>
+
+        <!-- Loading -->
+        <div id="loading" class="loading hidden">
+            <div class="spinner"></div>
+        </div>
+
+        <!-- Error -->
+        <div id="error-banner" class="error-banner hidden"></div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

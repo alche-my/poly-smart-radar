@@ -18,21 +18,30 @@
 
         <!-- Signals tab -->
         <div id="signals-tab" class="tab-content active">
-            <div class="filters">
-                <select id="tier-filter">
-                    <option value="">All Tiers</option>
-                    <option value="1">Tier 1</option>
-                    <option value="2">Tier 2</option>
-                    <option value="3">Tier 3</option>
-                </select>
-                <select id="status-filter">
-                    <option value="">All Status</option>
-                    <option value="ACTIVE">Active</option>
-                    <option value="CLOSED">Closed</option>
-                </select>
+            <!-- Signal list view -->
+            <div id="signals-list-view">
+                <div class="filters">
+                    <select id="tier-filter">
+                        <option value="">All Tiers</option>
+                        <option value="1">Tier 1</option>
+                        <option value="2">Tier 2</option>
+                        <option value="3">Tier 3</option>
+                    </select>
+                    <select id="status-filter">
+                        <option value="">All Status</option>
+                        <option value="ACTIVE">Active</option>
+                        <option value="WEAKENING">Weakening</option>
+                        <option value="CLOSED">Closed</option>
+                    </select>
+                </div>
+                <div id="signals-list" class="list"></div>
+                <div id="signals-empty" class="empty-state hidden">No signals yet. The scanner needs to detect trader convergence first.</div>
             </div>
-            <div id="signals-list" class="list"></div>
-            <div id="signals-empty" class="empty-state hidden">No signals yet. The scanner needs to detect trader convergence first.</div>
+            <!-- Signal detail view -->
+            <div id="signal-detail-view" class="hidden">
+                <button id="signal-back-btn" class="back-btn">&larr; Back</button>
+                <div id="signal-detail-content"></div>
+            </div>
         </div>
 
         <!-- Traders tab -->

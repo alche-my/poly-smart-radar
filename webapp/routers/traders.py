@@ -26,8 +26,14 @@ def list_traders(
         traders = []
         for r in rows:
             t = dict(r)
-            if isinstance(t.get("category_scores"), str):
-                t["category_scores"] = json.loads(t["category_scores"])
+            raw = t.get("category_scores")
+            if isinstance(raw, str) and raw:
+                try:
+                    t["category_scores"] = json.loads(raw)
+                except (json.JSONDecodeError, ValueError):
+                    t["category_scores"] = {}
+            elif not raw:
+                t["category_scores"] = {}
             traders.append(t)
 
         total = conn.execute("SELECT COUNT(*) FROM traders").fetchone()[0]
@@ -46,8 +52,14 @@ def get_trader(wallet_address: str):
         if not row:
             return {"error": "Trader not found"}, 404
         t = dict(row)
-        if isinstance(t.get("category_scores"), str):
-            t["category_scores"] = json.loads(t["category_scores"])
+        raw = t.get("category_scores")
+        if isinstance(raw, str) and raw:
+            try:
+                t["category_scores"] = json.loads(raw)
+            except (json.JSONDecodeError, ValueError):
+                t["category_scores"] = {}
+        elif not raw:
+            t["category_scores"] = {}
         return t
     finally:
         conn.close()

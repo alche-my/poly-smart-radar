@@ -68,7 +68,9 @@ class RadarScheduler:
         logger.info("--- Scan cycle start ---")
         changes = await self.position_scanner.scan_all()
         signals = self.signal_detector.detect_signals()
-        sent = await self.alert_sender.send_pending_alerts()
+
+        # Notifications disabled — will be re-enabled with smarter logic later
+        sent = 0
 
         traders_count = len(get_traders(self.db_path))
         result = {
@@ -78,11 +80,10 @@ class RadarScheduler:
             "alerts_sent": sent,
         }
         logger.info(
-            "--- Scan cycle done: %d traders, %d changes, %d signals, %d alerts ---",
+            "--- Scan cycle done: %d traders, %d changes, %d signals ---",
             result["traders_scanned"],
             result["changes_detected"],
             result["signals_created"],
-            result["alerts_sent"],
         )
         return result
 

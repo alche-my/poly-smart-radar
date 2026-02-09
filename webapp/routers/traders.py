@@ -29,10 +29,11 @@ def list_traders(
             raw = t.get("category_scores")
             if isinstance(raw, str) and raw:
                 try:
-                    t["category_scores"] = json.loads(raw)
+                    parsed = json.loads(raw)
+                    t["category_scores"] = parsed if isinstance(parsed, dict) else {}
                 except (json.JSONDecodeError, ValueError):
                     t["category_scores"] = {}
-            elif not raw:
+            elif not isinstance(raw, dict):
                 t["category_scores"] = {}
             traders.append(t)
 
@@ -55,10 +56,11 @@ def get_trader(wallet_address: str):
         raw = t.get("category_scores")
         if isinstance(raw, str) and raw:
             try:
-                t["category_scores"] = json.loads(raw)
+                parsed = json.loads(raw)
+                t["category_scores"] = parsed if isinstance(parsed, dict) else {}
             except (json.JSONDecodeError, ValueError):
                 t["category_scores"] = {}
-        elif not raw:
+        elif not isinstance(raw, dict):
             t["category_scores"] = {}
         return t
     finally:

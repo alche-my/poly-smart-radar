@@ -4,14 +4,28 @@ import sys
 # Ensure project root is on sys.path so 'config' and 'db' are importable
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from webapp.routers import signals, traders, dashboard
 
+
+class NoCacheStaticMiddleware(BaseHTTPMiddleware):
+    """Prevent Telegram WebView from caching stale JS/CSS."""
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+        if path.endswith((".html", ".js", ".css")) or path == "/":
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+        return response
+
+
 app = FastAPI(title="Poly Smart Radar API", version="1.0.0")
 
+app.add_middleware(NoCacheStaticMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

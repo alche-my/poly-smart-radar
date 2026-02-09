@@ -100,6 +100,18 @@ def _enrich_signal(s: dict, conn) -> dict:
                 })
 
     s["traders_involved"] = traders
+
+    # Look up event_slug from position_changes so Polymarket links work
+    if not s.get("event_slug"):
+        cid = s.get("condition_id")
+        if cid:
+            evt_row = conn.execute(
+                "SELECT event_slug FROM position_changes WHERE condition_id = ? AND event_slug != '' LIMIT 1",
+                (cid,),
+            ).fetchone()
+            if evt_row and evt_row["event_slug"]:
+                s["event_slug"] = evt_row["event_slug"]
+
     return s
 
 

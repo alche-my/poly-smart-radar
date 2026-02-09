@@ -275,6 +275,42 @@ body {
     color: var(--text-secondary);
 }
 
+.trader-link {
+    color: var(--accent-blue);
+    text-decoration: none;
+}
+
+.trader-link:hover {
+    text-decoration: underline;
+}
+
+.profile-link {
+    font-size: 11px;
+    color: var(--accent-blue);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.profile-link:hover {
+    text-decoration: underline;
+}
+
+.trader-categories {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+.cat-badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(68, 138, 255, 0.15);
+    color: var(--accent-blue);
+}
+
 /* Polymarket button */
 .polymarket-btn {
     display: block;

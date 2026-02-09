@@ -126,11 +126,23 @@ class SignalDetector:
             wallet_changes = by_wallet[wallet]
             best_change = max(wallet_changes, key=lambda c: c.get("conviction_score", 0))
 
+            cat_scores_raw = trader.get("category_scores", "{}")
+            if isinstance(cat_scores_raw, str):
+                try:
+                    cat_scores = json.loads(cat_scores_raw)
+                except (json.JSONDecodeError, TypeError):
+                    cat_scores = {}
+            else:
+                cat_scores = cat_scores_raw
+
             traders_data.append({
                 "wallet_address": wallet,
                 "username": trader.get("username", wallet[:8]),
                 "trader_score": trader.get("trader_score", 0),
                 "win_rate": trader.get("win_rate", 0),
+                "roi": trader.get("roi", 0),
+                "total_closed": trader.get("total_closed", 0),
+                "category_scores": cat_scores,
                 "conviction": best_change.get("conviction_score", 1.0),
                 "change_type": best_change.get("change_type", "OPEN"),
                 "size": best_change.get("new_size", 0),

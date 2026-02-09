@@ -206,25 +206,50 @@ function renderTraderInSignal(t) {
     const name = t.username || (t.wallet_address ? t.wallet_address.slice(0, 10) + '...' : '?');
     const score = Number(t.trader_score || 0).toFixed(1);
     const wr = t.win_rate != null ? (t.win_rate * 100).toFixed(0) + '%' : '?';
+    const roi = t.roi != null ? (Number(t.roi) * 100).toFixed(1) : '?';
+    const roiNum = t.roi != null ? Number(t.roi) : 0;
+    const roiClass = roiNum >= 0 ? 'positive' : 'negative';
+    const totalClosed = t.total_closed || 0;
     const changeType = t.change_type || '?';
     const changeClass = `change-${changeType.toLowerCase()}`;
     const size = t.size != null ? `$${Number(t.size).toFixed(0)}` : '?';
     const conviction = t.conviction != null ? Number(t.conviction).toFixed(1) + 'x' : '?';
     const ago = formatTimeAgo(t.detected_at);
+    const profileUrl = t.wallet_address
+        ? `https://polymarket.com/profile/${t.wallet_address}`
+        : '';
+
+    // Category experience badges
+    const catScores = t.category_scores || {};
+    const catBadges = Object.entries(catScores)
+        .filter(([, wr]) => wr > 0)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([cat, wr]) => `<span class="cat-badge">${escapeHtml(cat)} ${(wr * 100).toFixed(0)}%</span>`)
+        .join('');
 
     return `
         <div class="trader-in-signal">
             <div class="trader-header">
-                <span class="trader-name">${escapeHtml(name)}</span>
+                ${profileUrl
+                    ? `<a class="trader-name trader-link" href="${profileUrl}" target="_blank">${escapeHtml(name)}</a>`
+                    : `<span class="trader-name">${escapeHtml(name)}</span>`
+                }
                 <span class="change-badge ${changeClass}">${changeType}</span>
             </div>
             <div class="trader-stats-row">
                 <span>Score: <b>${score}</b></span>
                 <span>WR: <b>${wr}</b></span>
-                <span>Size: <b>${size}</b></span>
+                <span>ROI: <b class="${roiClass}">${roi}%</b></span>
             </div>
             <div class="trader-stats-row">
-                <span>Conviction: <b>${conviction} avg</b></span>
+                <span>Size: <b>${size}</b></span>
+                <span>Conv: <b>${conviction}</b></span>
+                <span>Closed: <b>${totalClosed}</b></span>
+            </div>
+            ${catBadges ? `<div class="trader-categories">${catBadges}</div>` : ''}
+            <div class="trader-stats-row">
+                ${profileUrl ? `<a class="profile-link" href="${profileUrl}" target="_blank">Profile &rarr;</a>` : ''}
                 <span class="trader-time">${ago}</span>
             </div>
         </div>

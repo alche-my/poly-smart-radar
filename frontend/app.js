@@ -24,6 +24,19 @@ async function apiFetch(path) {
     return resp.json();
 }
 
+// Safe render helper — one bad item won't kill the whole list
+function safeMap(arr, renderFn) {
+    return arr.map(item => {
+        try {
+            if (!item || typeof item !== 'object') return '';
+            return renderFn(item);
+        } catch (e) {
+            console.error('Render error:', e, item);
+            return '';
+        }
+    }).join('');
+}
+
 // --- Tabs ---
 $$('.tab').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -51,6 +64,7 @@ async function loadTab(tab) {
         else if (tab === 'traders') await loadTraders();
         else if (tab === 'dashboard') await loadDashboard();
     } catch (err) {
+        console.error('loadTab error:', err);
         showError(err.message);
     } finally {
         hide($('#loading'));
@@ -88,7 +102,7 @@ async function loadSignals() {
 
     hide(empty);
     signalsCache = data.signals;
-    list.innerHTML = data.signals.map(renderSignalCard).join('');
+    list.innerHTML = safeMap(data.signals, renderSignalCard);
 
     // Attach click handlers
     list.querySelectorAll('.signal-card').forEach((card, i) => {
@@ -123,7 +137,7 @@ function renderSignalCard(s) {
             <div class="market-title">${escapeHtml(s.market_title || 'Unknown market')}</div>
             <div class="meta">
                 <span class="direction ${dirClass}">${(s.direction || '?').toUpperCase()} @ ${price}</span>
-                <span>${timeAgo}</span>
+                <span>${tradersCount > 0 ? tradersCount + ' traders' : ''} ${timeAgo}</span>
             </div>
         </div>
     `;
@@ -152,7 +166,7 @@ function openSignalDetail(s) {
         tradersHtml = `
             <div class="detail-section">
                 <div class="detail-section-title">Traders (${traders.length})</div>
-                ${traders.map(renderTraderInSignal).join('')}
+                ${safeMap(traders, renderTraderInSignal)}
             </div>
         `;
     }
@@ -275,7 +289,7 @@ async function loadTraders() {
     }
 
     hide(empty);
-    list.innerHTML = data.traders.map(renderTraderCard).join('');
+    list.innerHTML = safeMap(data.traders, renderTraderCard);
 }
 
 function renderTraderCard(t) {
@@ -331,7 +345,7 @@ async function loadDashboard() {
             </div>
         </div>
         <h3>Top Active Signals</h3>
-        ${(data.top_signals || []).map(renderSignalCard).join('') || '<div class="empty-state">No active signals</div>'}
+        ${safeMap(data.top_signals || [], renderSignalCard) || '<div class="empty-state">No active signals</div>'}
     `;
 }
 

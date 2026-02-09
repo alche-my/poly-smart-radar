@@ -9,6 +9,7 @@ if (tg) {
 
 // --- State ---
 let currentTab = 'signals';
+let signalsCache = [];
 
 // --- DOM helpers ---
 function $(sel) { return document.querySelector(sel); }
@@ -32,6 +33,11 @@ $$('.tab').forEach(btn => {
         const tab = btn.dataset.tab;
         $(`#${tab}-tab`).classList.add('active');
         currentTab = tab;
+        // Reset signal detail view when switching tabs
+        if (tab === 'signals') {
+            hide($('#signal-detail-view'));
+            show($('#signals-list-view'));
+        }
         loadTab(tab);
     });
 });
@@ -59,6 +65,10 @@ function showError(msg) {
 
 // --- Signals ---
 async function loadSignals() {
+    // Ensure list view is shown
+    hide($('#signal-detail-view'));
+    show($('#signals-list-view'));
+
     const tier = $('#tier-filter').value;
     const status = $('#status-filter').value;
     let url = '/signals?limit=50';
@@ -71,40 +81,161 @@ async function loadSignals() {
 
     if (!data.signals || data.signals.length === 0) {
         list.innerHTML = '';
+        signalsCache = [];
         show(empty);
         return;
     }
 
     hide(empty);
+    signalsCache = data.signals;
     list.innerHTML = data.signals.map(renderSignalCard).join('');
+
+    // Attach click handlers
+    list.querySelectorAll('.signal-card').forEach((card, i) => {
+        card.addEventListener('click', (e) => {
+            // Don't navigate if clicking a link
+            if (e.target.closest('a')) return;
+            openSignalDetail(signalsCache[i]);
+        });
+    });
 }
 
 function renderSignalCard(s) {
     const tierClass = `tier-${s.tier || 3}`;
     const tierLabel = `Tier ${s.tier || '?'}`;
+    const status = s.status || 'ACTIVE';
+    const statusClass = `status-${status.toLowerCase()}`;
     const dirClass = (s.direction || '').toUpperCase() === 'YES' ? 'direction-yes' : 'direction-no';
     const traders = Array.isArray(s.traders_involved) ? s.traders_involved : [];
     const tradersCount = traders.length;
     const timeAgo = formatTimeAgo(s.created_at);
-    const slug = s.market_slug || '';
     const price = s.current_price != null ? `$${Number(s.current_price).toFixed(2)}` : '';
 
     return `
-        <div class="card signal-card">
+        <div class="card signal-card" role="button">
             <div class="header">
-                <span class="tier-badge ${tierClass}">${tierLabel}</span>
-                <span class="score">${Number(s.signal_score || 0).toFixed(1)}</span>
+                <div class="header-left">
+                    <span class="tier-badge ${tierClass}">${tierLabel}</span>
+                    <span class="status-badge ${statusClass}">${status}</span>
+                </div>
+                <span class="score">Score: ${Number(s.signal_score || 0).toFixed(1)}</span>
             </div>
             <div class="market-title">${escapeHtml(s.market_title || 'Unknown market')}</div>
             <div class="meta">
-                <span class="direction ${dirClass}">${(s.direction || '?').toUpperCase()} ${price}</span>
+                <span class="direction ${dirClass}">${(s.direction || '?').toUpperCase()} @ ${price}</span>
                 <span>${timeAgo}</span>
             </div>
-            <div class="traders-count">${tradersCount} trader${tradersCount !== 1 ? 's' : ''} involved</div>
-            ${slug ? `<a class="market-link" href="https://polymarket.com/event/${slug}" target="_blank">View on Polymarket</a>` : ''}
         </div>
     `;
 }
+
+// --- Signal Detail ---
+function openSignalDetail(s) {
+    hide($('#signals-list-view'));
+    show($('#signal-detail-view'));
+
+    const tierClass = `tier-${s.tier || 3}`;
+    const status = s.status || 'ACTIVE';
+    const statusClass = `status-${status.toLowerCase()}`;
+    const dirClass = (s.direction || '').toUpperCase() === 'YES' ? 'direction-yes' : 'direction-no';
+    const price = s.current_price != null ? `$${Number(s.current_price).toFixed(2)}` : '';
+    const traders = Array.isArray(s.traders_involved) ? s.traders_involved : [];
+    const slug = s.market_slug || '';
+    const eventSlug = s.event_slug || slug;
+    const peakScore = Number(s.peak_score || s.signal_score || 0);
+    const currentScore = Number(s.signal_score || 0);
+    const timeAgo = formatTimeAgo(s.created_at);
+    const updatedAgo = formatTimeAgo(s.updated_at);
+
+    let tradersHtml = '';
+    if (traders.length > 0) {
+        tradersHtml = `
+            <div class="detail-section">
+                <div class="detail-section-title">Traders (${traders.length})</div>
+                ${traders.map(renderTraderInSignal).join('')}
+            </div>
+        `;
+    }
+
+    const polymarketUrl = eventSlug
+        ? `https://polymarket.com/event/${eventSlug}`
+        : '';
+
+    $('#signal-detail-content').innerHTML = `
+        <div class="card detail-card">
+            <div class="header">
+                <div class="header-left">
+                    <span class="tier-badge ${tierClass}">Tier ${s.tier || '?'}</span>
+                    <span class="status-badge ${statusClass}">${status}</span>
+                </div>
+                <span class="score">Score: ${currentScore.toFixed(1)}</span>
+            </div>
+            <div class="market-title">${escapeHtml(s.market_title || 'Unknown market')}</div>
+            <div class="detail-meta">
+                <div class="detail-row">
+                    <span class="detail-label">Direction</span>
+                    <span class="direction ${dirClass}">${(s.direction || '?').toUpperCase()} @ ${price}</span>
+                </div>
+                ${peakScore !== currentScore ? `
+                <div class="detail-row">
+                    <span class="detail-label">Peak score</span>
+                    <span>${peakScore.toFixed(1)}</span>
+                </div>` : ''}
+                <div class="detail-row">
+                    <span class="detail-label">Created</span>
+                    <span>${timeAgo}</span>
+                </div>
+                ${s.updated_at ? `
+                <div class="detail-row">
+                    <span class="detail-label">Updated</span>
+                    <span>${updatedAgo}</span>
+                </div>` : ''}
+            </div>
+
+            ${tradersHtml}
+
+            ${polymarketUrl ? `
+            <a class="polymarket-btn" href="${polymarketUrl}" target="_blank">
+                Open on Polymarket &rarr;
+            </a>` : ''}
+        </div>
+    `;
+}
+
+function renderTraderInSignal(t) {
+    const name = t.username || (t.wallet_address ? t.wallet_address.slice(0, 10) + '...' : '?');
+    const score = Number(t.trader_score || 0).toFixed(1);
+    const wr = t.win_rate != null ? (t.win_rate * 100).toFixed(0) + '%' : '?';
+    const changeType = t.change_type || '?';
+    const changeClass = `change-${changeType.toLowerCase()}`;
+    const size = t.size != null ? `$${Number(t.size).toFixed(0)}` : '?';
+    const conviction = t.conviction != null ? Number(t.conviction).toFixed(1) + 'x' : '?';
+    const ago = formatTimeAgo(t.detected_at);
+
+    return `
+        <div class="trader-in-signal">
+            <div class="trader-header">
+                <span class="trader-name">${escapeHtml(name)}</span>
+                <span class="change-badge ${changeClass}">${changeType}</span>
+            </div>
+            <div class="trader-stats-row">
+                <span>Score: <b>${score}</b></span>
+                <span>WR: <b>${wr}</b></span>
+                <span>Size: <b>${size}</b></span>
+            </div>
+            <div class="trader-stats-row">
+                <span>Conviction: <b>${conviction} avg</b></span>
+                <span class="trader-time">${ago}</span>
+            </div>
+        </div>
+    `;
+}
+
+// Signal detail back button
+$('#signal-back-btn').addEventListener('click', () => {
+    hide($('#signal-detail-view'));
+    show($('#signals-list-view'));
+});
 
 // --- Traders ---
 async function loadTraders() {
@@ -124,19 +255,26 @@ async function loadTraders() {
 
 function renderTraderCard(t) {
     const name = t.username || (t.wallet_address ? t.wallet_address.slice(0, 10) + '...' : 'Unknown');
-    const wr = t.win_rate != null ? (t.win_rate * 100).toFixed(0) : '?';
-    const roi = t.roi != null ? (t.roi * 100).toFixed(1) : '?';
+    const score = Number(t.trader_score || 0);
+    const wr = t.win_rate != null ? (Number(t.win_rate) * 100).toFixed(0) : '?';
+    const roi = t.roi != null ? (Number(t.roi) * 100).toFixed(1) : '?';
+    const roiNum = t.roi != null ? Number(t.roi) : 0;
+    const roiClass = roiNum >= 0 ? 'positive' : 'negative';
     const closed = t.total_closed || 0;
+    const avgSize = t.avg_position_size != null ? `$${Number(t.avg_position_size).toFixed(0)}` : '?';
 
     return `
         <div class="card trader-card">
             <div class="header">
                 <span class="name">${escapeHtml(name)}</span>
-                <span class="score">${Number(t.trader_score || 0).toFixed(2)}</span>
+                <span class="score">${score.toFixed(1)}</span>
             </div>
             <div class="stats">
                 <span>WR: <span class="stat-value">${wr}%</span></span>
-                <span>ROI: <span class="stat-value">${roi}%</span></span>
+                <span>ROI: <span class="stat-value ${roiClass}">${roi}%</span></span>
+                <span>Avg: <span class="stat-value">${avgSize}</span></span>
+            </div>
+            <div class="stats">
                 <span>Closed: <span class="stat-value">${closed}</span></span>
             </div>
         </div>

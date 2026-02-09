@@ -104,14 +104,25 @@ body {
 }
 
 /* Signal card */
-.signal-card .header {
+.signal-card {
+    cursor: pointer;
+}
+
+.signal-card .header,
+.detail-card .header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 8px;
 }
 
-.signal-card .tier-badge {
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.tier-badge {
     padding: 3px 10px;
     border-radius: 12px;
     font-size: 11px;
@@ -123,16 +134,30 @@ body {
 .tier-2 { background: var(--tier2); color: #1a1a2e; }
 .tier-3 { background: var(--tier3); color: #fff; }
 
-.signal-card .score {
-    font-size: 18px;
+.status-badge {
+    font-size: 10px;
     font-weight: 700;
-    color: var(--accent-green);
+    padding: 2px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
 }
 
-.signal-card .market-title {
+.status-active { background: rgba(0, 200, 83, 0.2); color: var(--accent-green); }
+.status-weakening { background: rgba(255, 214, 0, 0.2); color: var(--accent-yellow); }
+.status-closed { background: rgba(233, 69, 96, 0.2); color: var(--accent); }
+
+.signal-card .score,
+.detail-card .score {
     font-size: 14px;
     font-weight: 600;
-    margin-bottom: 6px;
+    color: var(--text-secondary);
+}
+
+.signal-card .market-title,
+.detail-card .market-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 8px;
     line-height: 1.3;
 }
 
@@ -143,25 +168,130 @@ body {
     color: var(--text-secondary);
 }
 
-.signal-card .direction {
+.direction {
     font-weight: 600;
 }
 
 .direction-yes { color: var(--accent-green); }
 .direction-no { color: var(--accent); }
 
-.signal-card .traders-count {
-    font-size: 12px;
-    color: var(--text-secondary);
-    margin-top: 6px;
+/* Back button */
+.back-btn {
+    background: none;
+    border: none;
+    color: var(--accent-blue);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 8px 0;
+    margin-bottom: 8px;
 }
 
-.signal-card .status-badge {
-    font-size: 11px;
+/* Signal detail view */
+.detail-card {
+    padding: 16px;
+}
+
+.detail-meta {
+    margin-top: 12px;
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+}
+
+.detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    font-size: 13px;
+}
+
+.detail-label {
+    color: var(--text-secondary);
+}
+
+/* Traders in signal detail */
+.detail-section {
+    margin-top: 14px;
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+}
+
+.detail-section-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+}
+
+.trader-in-signal {
+    background: var(--bg-card);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+}
+
+.trader-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.trader-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.change-badge {
+    font-size: 10px;
+    font-weight: 700;
     padding: 2px 6px;
     border-radius: 4px;
-    background: var(--bg-card);
+    text-transform: uppercase;
 }
+
+.change-open { background: rgba(0, 200, 83, 0.2); color: var(--accent-green); }
+.change-increase { background: rgba(0, 200, 83, 0.2); color: var(--accent-green); }
+.change-decrease { background: rgba(255, 214, 0, 0.2); color: var(--accent-yellow); }
+.change-close { background: rgba(233, 69, 96, 0.2); color: var(--accent); }
+
+.trader-stats-row {
+    display: flex;
+    gap: 12px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 3px;
+}
+
+.trader-stats-row b {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.trader-time {
+    margin-left: auto;
+    color: var(--text-secondary);
+}
+
+/* Polymarket button */
+.polymarket-btn {
+    display: block;
+    text-align: center;
+    margin-top: 14px;
+    padding: 12px;
+    background: var(--accent-blue);
+    color: #fff;
+    border-radius: 10px;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+/* ROI coloring */
+.positive { color: var(--accent-green); }
+.negative { color: var(--accent); }
 
 /* Trader card */
 .trader-card .header {
@@ -270,11 +400,3 @@ body {
     display: none !important;
 }
 
-/* Polymarket link */
-.market-link {
-    display: inline-block;
-    margin-top: 6px;
-    font-size: 12px;
-    color: var(--accent-blue);
-    text-decoration: none;
-}

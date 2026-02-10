@@ -156,6 +156,51 @@ def list_signals(
         conn.close()
 
 
+@router.get("/signals/stats")
+def signal_stats():
+    """Accuracy and P&L stats grouped by tier."""
+    conn = _get_connection(_db_path)
+    try:
+        rows = conn.execute("""
+            SELECT
+                tier,
+                COUNT(*) as total,
+                SUM(CASE WHEN resolved_at IS NOT NULL THEN 1 ELSE 0 END) as resolved,
+                SUM(CASE WHEN pnl_percent > 0 THEN 1 ELSE 0 END) as wins,
+                SUM(CASE WHEN pnl_percent <= 0 AND resolved_at IS NOT NULL THEN 1 ELSE 0 END) as losses,
+                AVG(CASE WHEN resolved_at IS NOT NULL THEN pnl_percent END) as avg_pnl,
+                SUM(CASE WHEN resolved_at IS NULL THEN 1 ELSE 0 END) as pending
+            FROM signals
+            GROUP BY tier
+            ORDER BY tier
+        """).fetchall()
+
+        tiers = []
+        for r in rows:
+            r = dict(r)
+            resolved = r["resolved"] or 0
+            wins = r["wins"] or 0
+            r["win_rate"] = round(wins / resolved, 4) if resolved > 0 else None
+            tiers.append(r)
+
+        # Overall
+        total_row = conn.execute("""
+            SELECT
+                COUNT(*) as total,
+                SUM(CASE WHEN resolved_at IS NOT NULL THEN 1 ELSE 0 END) as resolved,
+                SUM(CASE WHEN pnl_percent > 0 THEN 1 ELSE 0 END) as wins,
+                AVG(CASE WHEN resolved_at IS NOT NULL THEN pnl_percent END) as avg_pnl
+            FROM signals
+        """).fetchone()
+        total = dict(total_row)
+        resolved = total["resolved"] or 0
+        total["win_rate"] = round(total["wins"] / resolved, 4) if resolved > 0 else None
+
+        return {"by_tier": tiers, "overall": total}
+    finally:
+        conn.close()
+
+
 @router.get("/signals/{signal_id}")
 def get_signal(signal_id: int):
     conn = _get_connection(_db_path)

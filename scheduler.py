@@ -11,6 +11,7 @@ from modules.watchlist_builder import WatchlistBuilder
 from modules.position_scanner import PositionScanner
 from modules.signal_detector import SignalDetector
 from modules.alert_sender import AlertSender
+from modules.resolution_checker import ResolutionChecker
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ class RadarScheduler:
         self.position_scanner = PositionScanner(self.data_api, db_path)
         self.signal_detector = SignalDetector(db_path)
         self.alert_sender = AlertSender(db_path=db_path)
+        self.resolution_checker = ResolutionChecker(self.gamma_api, db_path)
         self._running = False
 
     async def start(self) -> None:
@@ -69,6 +71,9 @@ class RadarScheduler:
         changes = await self.position_scanner.scan_all()
         signals = self.signal_detector.detect_signals()
 
+        # Check resolutions of existing signals
+        res_result = await self.resolution_checker.check_all()
+
         # Notifications disabled — will be re-enabled with smarter logic later
         sent = 0
 
@@ -78,12 +83,14 @@ class RadarScheduler:
             "changes_detected": len(changes),
             "signals_created": len(signals),
             "alerts_sent": sent,
+            "resolutions_found": res_result.get("resolved", 0),
         }
         logger.info(
-            "--- Scan cycle done: %d traders, %d changes, %d signals ---",
+            "--- Scan cycle done: %d traders, %d changes, %d signals, %d resolved ---",
             result["traders_scanned"],
             result["changes_detected"],
             result["signals_created"],
+            result["resolutions_found"],
         )
         return result
 

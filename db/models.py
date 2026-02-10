@@ -71,7 +71,10 @@ _TABLES = {
             current_price REAL DEFAULT 0,
             created_at TIMESTAMP NOT NULL,
             updated_at TIMESTAMP,
-            sent BOOLEAN DEFAULT 0
+            sent BOOLEAN DEFAULT 0,
+            resolved_at TIMESTAMP,
+            resolution_outcome TEXT,
+            pnl_percent REAL
         )
     """,
 }
@@ -349,6 +352,17 @@ def get_unsent_signals(db_path: str) -> list[dict]:
     try:
         rows = conn.execute(
             "SELECT * FROM signals WHERE sent = 0 ORDER BY created_at ASC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_unresolved_signals(db_path: str) -> list[dict]:
+    conn = _get_connection(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT * FROM signals WHERE resolved_at IS NULL ORDER BY created_at DESC"
         ).fetchall()
         return [dict(r) for r in rows]
     finally:

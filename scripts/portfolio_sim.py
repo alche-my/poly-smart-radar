@@ -1,8 +1,11 @@
 """
-Portfolio simulator: run 3 strategies on backtest results and compare equity curves.
+Portfolio simulator: run strategies on backtest results and compare equity curves.
+
+Two pools:
+  - MAIN ($100): filtered signals, conservative sizing (Quarter-Kelly)
+  - GAMBLING ($100): penny bets (entry < $0.10), aggressive sizing (Half-Kelly)
 
 Usage:
-    python scripts/portfolio_sim.py test_results.json
     python scripts/portfolio_sim.py full_results.json
 """
 import json
@@ -15,34 +18,69 @@ from datetime import datetime
 INITIAL_BALANCE = 100.0
 MAX_BET_FRACTION = 0.25  # max 25% of portfolio per trade
 
+# ── Price & category filters ────────────────────────────────────────
 
-# ── Strategies ────────────────────────────────────────────────────────
+PENNY_THRESHOLD = 0.10        # below this → gambling pool
+MAX_ENTRY_PRICE = 0.85        # above this → skip (tiny upside)
+BAD_CATEGORIES = {"CRYPTO", "CULTURE", "FINANCE"}  # negative avg P&L in backtest
 
 
-STRATEGIES = {
-    "Tier 1 Only": {
-        "filter": lambda s: s["tier"] == 1,
-        "description": "Only Tier 1 signals (3+ traders, score > 15)",
+def is_main_signal(s: dict) -> bool:
+    """Signal qualifies for main portfolio."""
+    price = s.get("entry_price", 0)
+    cat = (s.get("category") or "OTHER").upper()
+    return (
+        PENNY_THRESHOLD <= price <= MAX_ENTRY_PRICE
+        and cat not in BAD_CATEGORIES
+    )
+
+
+def is_gambling_signal(s: dict) -> bool:
+    """Signal qualifies for gambling pool (penny bets)."""
+    price = s.get("entry_price", 0)
+    return 0 < price < PENNY_THRESHOLD
+
+
+# ── Strategies ──────────────────────────────────────────────────────
+
+MAIN_STRATEGIES = {
+    "Main: Tier 1 Only": {
+        "filter": lambda s: is_main_signal(s) and s["tier"] == 1,
+        "description": "Tier 1, entry $0.10-$0.85, excl. CRYPTO/CULTURE/FINANCE",
     },
-    "Tier 1+2": {
-        "filter": lambda s: s["tier"] <= 2,
-        "description": "Tier 1 and Tier 2 signals",
+    "Main: Tier 1+2": {
+        "filter": lambda s: is_main_signal(s) and s["tier"] <= 2,
+        "description": "Tier 1+2, entry $0.10-$0.85, excl. CRYPTO/CULTURE/FINANCE",
     },
-    "Tier 1+2 + Cat": {
-        "filter": lambda s: s["tier"] <= 2 and s.get("cat_match_ratio", 0) > 0.5,
-        "description": "Tier 1+2, only when traders match market category",
+    "Main: Tier 1+2 Sports+Politics+Tech": {
+        "filter": lambda s: (
+            is_main_signal(s) and s["tier"] <= 2
+            and (s.get("category") or "OTHER").upper() in ("SPORTS", "POLITICS", "TECH", "OTHER", "WEATHER")
+        ),
+        "description": "Tier 1+2, only profitable categories",
+    },
+}
+
+GAMBLING_STRATEGIES = {
+    "Gambling: Tier 1 Penny": {
+        "filter": lambda s: is_gambling_signal(s) and s["tier"] == 1,
+        "description": "Tier 1 penny bets (entry < $0.10) — lottery tickets",
+    },
+    "Gambling: Tier 1+2 Penny": {
+        "filter": lambda s: is_gambling_signal(s) and s["tier"] <= 2,
+        "description": "Tier 1+2 penny bets (entry < $0.10) — lottery tickets",
     },
 }
 
 
-# ── Kelly calculation ─────────────────────────────────────────────────
+# ── Kelly calculation ───────────────────────────────────────────────
 
 
-def calc_kelly_for_tier(signals: list[dict], tier: int) -> float:
-    """Calculate Half-Kelly fraction for a specific tier."""
+def calc_kelly(signals: list[dict], tier: int, fraction: float = 0.5) -> float:
+    """Calculate Kelly fraction for a specific tier. fraction=0.5 → Half-Kelly, 0.25 → Quarter."""
     tier_signals = [s for s in signals if s["tier"] == tier]
     if not tier_signals:
-        return 0.05  # fallback: 5%
+        return 0.03  # fallback
 
     wins = [s for s in tier_signals if s["correct"]]
     if not wins:
@@ -55,16 +93,21 @@ def calc_kelly_for_tier(signals: list[dict], tier: int) -> float:
         return 0.0
 
     kelly = (win_rate * avg_win_pnl - (1 - win_rate)) / avg_win_pnl
-    half_kelly = max(kelly / 2, 0)
-    return min(half_kelly, MAX_BET_FRACTION)  # cap at max bet
+    return min(max(kelly * fraction, 0), MAX_BET_FRACTION)
 
 
-# ── Portfolio simulation ──────────────────────────────────────────────
+# ── Portfolio simulation ────────────────────────────────────────────
 
 
-def simulate(signals: list[dict], strategy_filter, kelly_by_tier: dict) -> dict:
-    """Simulate a portfolio following a strategy on sorted signals."""
-    # Sort by end_date (resolution date)
+def simulate(signals: list[dict], strategy_filter, kelly_by_tier: dict,
+             initial_balance: float = INITIAL_BALANCE,
+             flat_bet: float | None = None) -> dict:
+    """
+    Simulate a portfolio following a strategy on sorted signals.
+
+    flat_bet: if set, bet this fixed dollar amount per trade (no compounding).
+              if None, use Kelly-based fraction of current portfolio (compounding).
+    """
     sorted_signals = sorted(
         [s for s in signals if strategy_filter(s)],
         key=lambda s: s.get("end_date", ""),
@@ -73,12 +116,12 @@ def simulate(signals: list[dict], strategy_filter, kelly_by_tier: dict) -> dict:
     if not sorted_signals:
         return {
             "trades": 0, "wins": 0, "losses": 0,
-            "final_balance": INITIAL_BALANCE, "roi": 0,
+            "final_balance": initial_balance, "roi": 0,
             "max_drawdown": 0, "equity_curve": [],
         }
 
-    portfolio = INITIAL_BALANCE
-    peak = INITIAL_BALANCE
+    portfolio = initial_balance
+    peak = initial_balance
     max_drawdown = 0
     equity_curve = [{"date": "start", "balance": portfolio, "event": "initial"}]
     wins = 0
@@ -88,35 +131,31 @@ def simulate(signals: list[dict], strategy_filter, kelly_by_tier: dict) -> dict:
         tier = signal["tier"]
         entry_price = signal["entry_price"]
 
-        # Skip bad data
-        if entry_price <= 0 or entry_price >= 1 or portfolio <= 0:
+        if entry_price <= 0 or entry_price >= 1 or portfolio <= 0.01:
             continue
 
-        # Bet sizing: Half-Kelly for this tier, capped at 25%
-        kelly = kelly_by_tier.get(tier, 0.05)
-        bet_size = portfolio * kelly
-        bet_size = min(bet_size, portfolio * MAX_BET_FRACTION)
-        bet_size = min(bet_size, portfolio)
+        if flat_bet is not None:
+            bet_size = min(flat_bet, portfolio)
+        else:
+            kelly = kelly_by_tier.get(tier, 0.03)
+            bet_size = portfolio * kelly
+            bet_size = min(bet_size, portfolio * MAX_BET_FRACTION, portfolio)
+
         bet_size = max(bet_size, 0)
-
-        if bet_size < 0.01:  # skip dust
+        if bet_size < 0.01:
             continue
 
-        # Calculate outcome
         if signal["correct"]:
-            # Bought shares at entry_price, each pays $1
             shares = bet_size / entry_price
             payout = shares * 1.0
             profit = payout - bet_size
             wins += 1
         else:
-            # Lost the bet
             profit = -bet_size
             losses += 1
 
         portfolio += profit
 
-        # Track peak and drawdown
         if portfolio > peak:
             peak = portfolio
         drawdown = (peak - portfolio) / peak if peak > 0 else 0
@@ -132,33 +171,33 @@ def simulate(signals: list[dict], strategy_filter, kelly_by_tier: dict) -> dict:
                      f"{'$' + str(round(profit, 1)) if profit >= 0 else '-$' + str(round(-profit, 1))}",
         })
 
+    total = wins + losses
     return {
-        "trades": wins + losses,
+        "trades": total,
         "wins": wins,
         "losses": losses,
-        "win_rate": round(wins / (wins + losses), 4) if (wins + losses) > 0 else 0,
+        "win_rate": round(wins / total, 4) if total > 0 else 0,
         "final_balance": round(portfolio, 2),
-        "roi": round((portfolio - INITIAL_BALANCE) / INITIAL_BALANCE * 100, 1),
+        "roi": round((portfolio - initial_balance) / initial_balance * 100, 1),
         "max_drawdown": round(max_drawdown * 100, 1),
         "equity_curve": equity_curve,
     }
 
 
-# ── Weekly equity curve (text chart) ─────────────────────────────────
+# ── Weekly equity chart ─────────────────────────────────────────────
 
 
-def render_equity_chart(equity_curve: list[dict], width: int = 50) -> str:
+def render_equity_chart(equity_curve: list[dict], width: int = 50,
+                        initial: float = INITIAL_BALANCE) -> str:
     """Render a simple text-based equity chart grouped by week."""
     if len(equity_curve) < 2:
         return "  (not enough data)"
 
-    # Group by week
     weekly: dict[str, float] = {}
     for point in equity_curve:
         date = point["date"]
         if date == "start":
             continue
-        # Get ISO week
         try:
             dt = datetime.fromisoformat(date)
             week = dt.strftime("%Y-W%W")
@@ -171,21 +210,42 @@ def render_equity_chart(equity_curve: list[dict], width: int = 50) -> str:
 
     weeks = sorted(weekly.keys())
     values = [weekly[w] for w in weeks]
-    min_val = min(min(values), INITIAL_BALANCE * 0.5)
-    max_val = max(max(values), INITIAL_BALANCE * 1.5)
+    min_val = min(min(values), initial * 0.5)
+    max_val = max(max(values), initial * 1.5)
     spread = max_val - min_val if max_val > min_val else 1
 
     lines = []
     for week, val in zip(weeks, values):
         bar_len = int((val - min_val) / spread * width)
-        bar = "█" * bar_len
-        marker = " ◀" if val < INITIAL_BALANCE else ""
+        bar = "█" * max(bar_len, 0)
+        marker = " ◀" if val < initial else ""
         lines.append(f"  {week} │{bar} ${val:.0f}{marker}")
 
     return "\n".join(lines)
 
 
-# ── Main report ───────────────────────────────────────────────────────
+# ── Signal stats ────────────────────────────────────────────────────
+
+
+def print_pool_stats(signals: list[dict], pool_filter, label: str):
+    """Print quick stats about a signal pool."""
+    pool = [s for s in signals if pool_filter(s)]
+    if not pool:
+        print(f"  {label}: 0 signals")
+        return
+    wins = sum(1 for s in pool if s["correct"])
+    wr = wins / len(pool) * 100
+    avg_price = sum(s["entry_price"] for s in pool) / len(pool)
+    cats = defaultdict(int)
+    for s in pool:
+        cats[s.get("category") or "OTHER"] += 1
+    top_cats = sorted(cats.items(), key=lambda x: -x[1])[:5]
+    cat_str = ", ".join(f"{c}({n})" for c, n in top_cats)
+    print(f"  {label}: {len(pool)} signals, WR {wr:.1f}%, avg entry ${avg_price:.2f}")
+    print(f"    Categories: {cat_str}")
+
+
+# ── Main report ─────────────────────────────────────────────────────
 
 
 def run_simulation(results_path: str) -> None:
@@ -193,64 +253,118 @@ def run_simulation(results_path: str) -> None:
         data = json.load(f)
 
     signals = data.get("signals", [])
-    stats = data.get("stats", {})
-
     if not signals:
         print("No signals in results file.")
         sys.exit(1)
 
-    # Calculate Kelly fractions from backtest stats
-    kelly_by_tier = {}
-    for tier in (1, 2, 3):
-        kelly_by_tier[tier] = calc_kelly_for_tier(signals, tier)
+    # Pre-filter signal pools for Kelly calculation
+    main_signals = [s for s in signals if is_main_signal(s)]
+    gambling_signals = [s for s in signals if is_gambling_signal(s)]
 
+    # Kelly: Quarter-Kelly for main, Half-Kelly for gambling
+    main_kelly = {}
+    for tier in (1, 2, 3):
+        main_kelly[tier] = calc_kelly(main_signals, tier, fraction=0.25)
+
+    gambling_kelly = {}
+    for tier in (1, 2, 3):
+        gambling_kelly[tier] = calc_kelly(gambling_signals, tier, fraction=0.5)
+
+    # Header
     print("\n" + "=" * 70)
-    print("  PORTFOLIO SIMULATION — $100 starting balance")
+    print("  PORTFOLIO SIMULATION v2")
+    print("  Main pool: $100 (Quarter-Kelly) | Gambling pool: $100 (Half-Kelly)")
     print("=" * 70)
     print(f"\n  Input: {results_path}")
     print(f"  Total signals: {len(signals)}")
-    print(f"  Kelly fractions: T1={kelly_by_tier[1]:.3f}, T2={kelly_by_tier[2]:.3f}, T3={kelly_by_tier[3]:.3f}")
-    print(f"  Max bet: {MAX_BET_FRACTION * 100:.0f}% of portfolio")
+    print(f"  Filters: entry ${PENNY_THRESHOLD}–${MAX_ENTRY_PRICE}, excl {BAD_CATEGORIES}")
+    print()
+    print_pool_stats(signals, is_main_signal, "Main pool")
+    print(f"    Kelly (Quarter): T1={main_kelly[1]:.3f}, T2={main_kelly[2]:.3f}")
+    print()
+    print_pool_stats(signals, is_gambling_signal, "Gambling pool")
+    print(f"    Kelly (Half):    T1={gambling_kelly[1]:.3f}, T2={gambling_kelly[2]:.3f}")
 
-    results = {}
+    # Flat bet sizes: $5 per main trade, $2 per gambling trade
+    MAIN_FLAT_BET = 5.0
+    GAMBLING_FLAT_BET = 2.0
 
-    for name, strategy in STRATEGIES.items():
-        result = simulate(signals, strategy["filter"], kelly_by_tier)
-        results[name] = result
+    # ── Main pool strategies ──
+    print(f"\n{'=' * 70}")
+    print(f"  MAIN POOL — $100, flat ${MAIN_FLAT_BET:.0f}/trade (no compounding)")
+    print(f"{'=' * 70}")
 
-    # Comparison table
-    print("\n" + "-" * 70)
-    print("  STRATEGY COMPARISON")
-    print("-" * 70)
-    print(f"  {'Strategy':<22} {'Trades':>7} {'W/L':>8} {'WR':>7} {'Final $':>9} {'ROI':>8} {'MaxDD':>7}")
+    main_results = {}
+    for name, strategy in MAIN_STRATEGIES.items():
+        result = simulate(signals, strategy["filter"], main_kelly, flat_bet=MAIN_FLAT_BET)
+        main_results[name] = result
 
-    for name, r in results.items():
+    print(f"\n  {'Strategy':<38} {'Trades':>6} {'W/L':>8} {'WR':>6} {'Final $':>9} {'ROI':>8} {'MaxDD':>6}")
+    for name, r in main_results.items():
         wl = f"{r['wins']}/{r['losses']}"
         print(
-            f"  {name:<22} {r['trades']:>7} {wl:>8} "
-            f"{r['win_rate'] * 100:>6.1f}% ${r['final_balance']:>7.0f} "
-            f"{r['roi']:>+7.1f}% {r['max_drawdown']:>6.1f}%"
+            f"  {name:<38} {r['trades']:>6} {wl:>8} "
+            f"{r['win_rate'] * 100:>5.1f}% ${r['final_balance']:>7.0f} "
+            f"{r['roi']:>+7.1f}% {r['max_drawdown']:>5.1f}%"
         )
 
-    # Equity curves
-    for name, r in results.items():
+    for name, r in main_results.items():
         print(f"\n{'─' * 70}")
-        print(f"  {name} — {STRATEGIES[name]['description']}")
-        print(f"  ${INITIAL_BALANCE:.0f} → ${r['final_balance']:.0f} "
-              f"({r['roi']:+.1f}%) | MaxDD: {r['max_drawdown']:.1f}%")
+        print(f"  {name} — {MAIN_STRATEGIES[name]['description']}")
+        print(f"  $100 → ${r['final_balance']:.0f} ({r['roi']:+.1f}%) | MaxDD: {r['max_drawdown']:.1f}%")
         print(f"{'─' * 70}")
-        chart = render_equity_chart(r["equity_curve"])
-        print(chart)
+        print(render_equity_chart(r["equity_curve"]))
 
-    # Trade log for best strategy
-    best_name = max(results, key=lambda n: results[n]["roi"])
-    best = results[best_name]
+    # ── Gambling pool strategies ──
+    print(f"\n{'=' * 70}")
+    print(f"  GAMBLING POOL — $100, flat ${GAMBLING_FLAT_BET:.0f}/trade (lottery tickets)")
+    print(f"{'=' * 70}")
+
+    gambling_results = {}
+    for name, strategy in GAMBLING_STRATEGIES.items():
+        result = simulate(signals, strategy["filter"], gambling_kelly, flat_bet=GAMBLING_FLAT_BET)
+        gambling_results[name] = result
+
+    print(f"\n  {'Strategy':<38} {'Trades':>6} {'W/L':>8} {'WR':>6} {'Final $':>9} {'ROI':>8} {'MaxDD':>6}")
+    for name, r in gambling_results.items():
+        wl = f"{r['wins']}/{r['losses']}"
+        print(
+            f"  {name:<38} {r['trades']:>6} {wl:>8} "
+            f"{r['win_rate'] * 100:>5.1f}% ${r['final_balance']:>7.0f} "
+            f"{r['roi']:>+7.1f}% {r['max_drawdown']:>5.1f}%"
+        )
+
+    for name, r in gambling_results.items():
+        print(f"\n{'─' * 70}")
+        print(f"  {name} — {GAMBLING_STRATEGIES[name]['description']}")
+        print(f"  $100 → ${r['final_balance']:.0f} ({r['roi']:+.1f}%) | MaxDD: {r['max_drawdown']:.1f}%")
+        print(f"{'─' * 70}")
+        print(render_equity_chart(r["equity_curve"]))
+
+    # ── Combined summary ──
+    print(f"\n{'=' * 70}")
+    print("  COMBINED SUMMARY (Main + Gambling = $200 total invested)")
+    print(f"{'=' * 70}")
+
+    best_main_name = max(main_results, key=lambda n: main_results[n]["roi"])
+    best_gambling_name = max(gambling_results, key=lambda n: gambling_results[n]["roi"])
+    best_main = main_results[best_main_name]
+    best_gambling = gambling_results[best_gambling_name]
+    combined = best_main["final_balance"] + best_gambling["final_balance"]
+    combined_roi = (combined - 200) / 200 * 100
+
+    print(f"\n  Best main:     {best_main_name}")
+    print(f"    $100 → ${best_main['final_balance']:.0f} ({best_main['roi']:+.1f}%)")
+    print(f"  Best gambling: {best_gambling_name}")
+    print(f"    $100 → ${best_gambling['final_balance']:.0f} ({best_gambling['roi']:+.1f}%)")
+    print(f"\n  Combined: $200 → ${combined:.0f} ({combined_roi:+.1f}%)")
+
+    # Trade log for best main strategy (last 50 trades)
     print(f"\n{'─' * 70}")
-    print(f"  TRADE LOG: {best_name} (best ROI)")
+    print(f"  TRADE LOG (last 50): {best_main_name}")
     print(f"{'─' * 70}")
-    for point in best["equity_curve"]:
-        if point["event"] == "initial":
-            continue
+    trade_entries = [p for p in best_main["equity_curve"] if p["event"] != "initial"]
+    for point in trade_entries[-50:]:
         print(f"  {point['date']} | ${point['balance']:>8.0f} | {point['event']}")
 
     print("\n" + "=" * 70)
@@ -259,13 +373,37 @@ def run_simulation(results_path: str) -> None:
     output_path = results_path.replace(".json", "_portfolio.json")
     portfolio_data = {
         "input": results_path,
-        "initial_balance": INITIAL_BALANCE,
-        "kelly_by_tier": kelly_by_tier,
-        "strategies": {
-            name: {k: v for k, v in r.items() if k != "equity_curve"}
-            for name, r in results.items()
+        "version": 2,
+        "filters": {
+            "penny_threshold": PENNY_THRESHOLD,
+            "max_entry_price": MAX_ENTRY_PRICE,
+            "excluded_categories": list(BAD_CATEGORIES),
         },
-        "equity_curves": {name: r["equity_curve"] for name, r in results.items()},
+        "main_pool": {
+            "initial_balance": INITIAL_BALANCE,
+            "kelly_fraction": "quarter",
+            "kelly_by_tier": main_kelly,
+            "strategies": {
+                name: {k: v for k, v in r.items() if k != "equity_curve"}
+                for name, r in main_results.items()
+            },
+        },
+        "gambling_pool": {
+            "initial_balance": INITIAL_BALANCE,
+            "kelly_fraction": "half",
+            "kelly_by_tier": gambling_kelly,
+            "strategies": {
+                name: {k: v for k, v in r.items() if k != "equity_curve"}
+                for name, r in gambling_results.items()
+            },
+        },
+        "combined": {
+            "total_invested": 200,
+            "best_main": best_main_name,
+            "best_gambling": best_gambling_name,
+            "final_balance": round(combined, 2),
+            "roi": round(combined_roi, 1),
+        },
     }
     with open(output_path, "w") as f:
         json.dump(portfolio_data, f, indent=2, ensure_ascii=False)

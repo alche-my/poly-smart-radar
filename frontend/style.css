@@ -103,36 +103,72 @@ body {
     transform: scale(0.98);
 }
 
-/* Signal card */
+/* ===================== */
+/* SIGNAL CARD (list)    */
+/* ===================== */
 .signal-card {
     cursor: pointer;
+    border-left: 4px solid var(--border);
+    padding-left: 12px;
 }
 
-.signal-card .header,
-.detail-card .header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
+.signal-card.tier-border-1 { border-left-color: var(--tier1); }
+.signal-card.tier-border-2 { border-left-color: var(--tier2); }
+.signal-card.tier-border-3 { border-left-color: var(--tier3); }
+
+.signal-card.non-strategy {
+    opacity: 0.45;
 }
 
-.header-left {
+.signal-card .identity-strip {
     display: flex;
     align-items: center;
     gap: 6px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+}
+
+.signal-card .identity-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
 }
 
 .tier-badge {
-    padding: 3px 10px;
-    border-radius: 12px;
-    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
+    letter-spacing: 0.3px;
 }
 
 .tier-1 { background: var(--tier1); color: #fff; }
 .tier-2 { background: var(--tier2); color: #1a1a2e; }
 .tier-3 { background: var(--tier3); color: #fff; }
+
+.category-badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(228, 228, 228, 0.1);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.non-strategy-label {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 5px;
+    border-radius: 3px;
+    background: rgba(233, 69, 96, 0.15);
+    color: var(--accent);
+    text-transform: uppercase;
+}
 
 .status-badge {
     font-size: 10px;
@@ -147,26 +183,58 @@ body {
 .status-resolved { background: rgba(68, 138, 255, 0.2); color: var(--accent-blue); }
 .status-closed { background: rgba(233, 69, 96, 0.2); color: var(--accent); }
 
-.signal-card .score,
-.detail-card .score {
-    font-size: 14px;
-    font-weight: 600;
+.signal-card .time-ago {
+    font-size: 11px;
     color: var(--text-secondary);
 }
 
-.signal-card .market-title,
-.detail-card .market-title {
+.signal-card .market-title {
     font-size: 15px;
     font-weight: 600;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
     line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 
-.signal-card .meta {
+/* Action strip at bottom of signal card */
+.action-strip {
     display: flex;
-    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
     font-size: 12px;
     color: var(--text-secondary);
+}
+
+.action-strip .direction-price {
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.action-strip .separator {
+    color: var(--border);
+}
+
+/* P&L badge on resolved signals */
+.pnl-badge {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+
+.pnl-positive {
+    background: rgba(0, 200, 83, 0.2);
+    color: var(--accent-green);
+}
+
+.pnl-negative {
+    background: rgba(233, 69, 96, 0.2);
+    color: var(--accent);
 }
 
 .direction {
@@ -175,6 +243,10 @@ body {
 
 .direction-yes { color: var(--accent-green); }
 .direction-no { color: var(--accent); }
+
+/* ===================== */
+/* SIGNAL DETAIL VIEW    */
+/* ===================== */
 
 /* Back button */
 .back-btn {
@@ -188,30 +260,162 @@ body {
     margin-bottom: 8px;
 }
 
-/* Signal detail view */
 .detail-card {
     padding: 16px;
 }
 
-.detail-meta {
-    margin-top: 12px;
-    border-top: 1px solid var(--border);
-    padding-top: 10px;
-}
-
-.detail-row {
+.detail-card .identity-strip {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    padding: 6px 0;
-    font-size: 13px;
+    gap: 6px;
+    margin-bottom: 4px;
+    flex-wrap: wrap;
 }
 
-.detail-label {
+.detail-card .identity-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.detail-card .market-title {
+    font-size: 17px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    line-height: 1.3;
+}
+
+.detail-card .detail-timestamps {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+}
+
+/* Price Action Block */
+.price-action-block {
+    background: var(--bg-card);
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 12px;
+}
+
+.price-action-block .direction-label {
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.price-action-block .prices-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 8px;
+}
+
+.price-action-block .price-item {
+    flex: 1;
+}
+
+.price-action-block .price-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 2px;
+}
+
+.price-action-block .price-value {
+    font-size: 22px;
+    font-weight: 700;
+}
+
+.price-action-block .spread-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    font-size: 12px;
     color: var(--text-secondary);
 }
 
-/* Traders in signal detail */
+.price-action-block .spread-value {
+    font-weight: 700;
+}
+
+.spread-positive { color: var(--accent-green); }
+.spread-negative { color: var(--accent); }
+
+/* Visual price bar */
+.price-bar-container {
+    position: relative;
+    height: 28px;
+    margin-top: 4px;
+}
+
+.price-bar-track {
+    position: absolute;
+    top: 8px;
+    left: 0;
+    right: 0;
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+}
+
+.price-bar-fill {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    border-radius: 3px;
+    opacity: 0.3;
+}
+
+.price-bar-marker {
+    position: absolute;
+    top: 0;
+    width: 3px;
+    height: 22px;
+    border-radius: 1px;
+    transform: translateX(-1px);
+}
+
+.price-bar-label {
+    position: absolute;
+    top: 22px;
+    font-size: 9px;
+    font-weight: 600;
+    transform: translateX(-50%);
+    white-space: nowrap;
+}
+
+.price-bar-ends {
+    display: flex;
+    justify-content: space-between;
+    font-size: 9px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+/* Signal Summary */
+.signal-summary {
+    background: rgba(68, 138, 255, 0.08);
+    border-left: 3px solid var(--accent-blue);
+    border-radius: 0 8px 8px 0;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+}
+
+.signal-summary strong {
+    color: var(--text-primary);
+}
+
+/* ===================== */
+/* TRADERS IN DETAIL     */
+/* ===================== */
 .detail-section {
     margin-top: 14px;
     border-top: 1px solid var(--border);
@@ -245,6 +449,14 @@ body {
     color: var(--text-primary);
 }
 
+.trader-header-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
 .change-badge {
     font-size: 10px;
     font-weight: 700;
@@ -263,7 +475,7 @@ body {
     gap: 12px;
     font-size: 11px;
     color: var(--text-secondary);
-    margin-top: 3px;
+    margin-top: 4px;
 }
 
 .trader-stats-row b {
@@ -271,9 +483,82 @@ body {
     font-weight: 600;
 }
 
-.trader-time {
-    margin-left: auto;
+/* Position line */
+.trader-position {
+    font-size: 12px;
     color: var(--text-secondary);
+    margin-top: 6px;
+    padding: 4px 0;
+}
+
+.trader-position b {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+/* Conviction bar */
+.conviction-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.conviction-bar-track {
+    flex: 1;
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+    max-width: 120px;
+}
+
+.conviction-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--accent-blue);
+    transition: width 0.3s;
+}
+
+.conviction-value {
+    font-weight: 700;
+    color: var(--text-primary);
+    min-width: 32px;
+}
+
+.conviction-high .conviction-bar-fill {
+    background: var(--accent-green);
+}
+
+.conviction-extreme .conviction-bar-fill {
+    background: var(--accent-yellow);
+}
+
+/* Category badges in trader */
+.trader-categories {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+}
+
+.cat-badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(68, 138, 255, 0.15);
+    color: var(--accent-blue);
+}
+
+/* Trader footer row */
+.trader-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 6px;
 }
 
 .trader-link {
@@ -296,16 +581,50 @@ body {
     text-decoration: underline;
 }
 
-.trader-categories {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    margin-top: 6px;
+/* Collapsible metadata */
+.meta-collapsible {
+    margin-top: 12px;
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
 }
 
-.cat-badge {
-    font-size: 10px;
+.meta-collapsible summary {
+    font-size: 12px;
     font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px 0;
+    list-style: none;
+}
+
+.meta-collapsible summary::-webkit-details-marker {
+    display: none;
+}
+
+.meta-collapsible summary::before {
+    content: '+ ';
+}
+
+.meta-collapsible[open] summary::before {
+    content: '- ';
+}
+
+.meta-collapsible .detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 0;
+    font-size: 12px;
+}
+
+.meta-collapsible .detail-label {
+    color: var(--text-secondary);
+}
+
+/* Resolution outcome badge */
+.resolution-badge {
+    font-size: 11px;
+    font-weight: 700;
     padding: 2px 6px;
     border-radius: 4px;
     background: rgba(68, 138, 255, 0.15);
@@ -330,7 +649,9 @@ body {
 .positive { color: var(--accent-green); }
 .negative { color: var(--accent); }
 
-/* Trader card */
+/* ===================== */
+/* TRADER CARD (list)    */
+/* ===================== */
 .trader-card .header {
     display: flex;
     justify-content: space-between;
@@ -361,7 +682,9 @@ body {
     font-weight: 600;
 }
 
-/* Dashboard */
+/* ===================== */
+/* DASHBOARD             */
+/* ===================== */
 .dashboard .stat-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -395,7 +718,9 @@ body {
     color: var(--text-secondary);
 }
 
-/* Empty state */
+/* ===================== */
+/* UTILITIES             */
+/* ===================== */
 .empty-state {
     text-align: center;
     padding: 40px 20px;
@@ -403,7 +728,6 @@ body {
     font-size: 14px;
 }
 
-/* Loading */
 .loading {
     display: flex;
     justify-content: center;
@@ -423,7 +747,6 @@ body {
     to { transform: rotate(360deg); }
 }
 
-/* Error banner */
 .error-banner {
     background: #4a1020;
     color: var(--accent);
@@ -433,35 +756,6 @@ body {
     margin: 12px;
 }
 
-/* P&L badge on resolved signals */
-.pnl-badge {
-    font-size: 12px;
-    font-weight: 700;
-    padding: 2px 8px;
-    border-radius: 4px;
-}
-
-.pnl-positive {
-    background: rgba(0, 200, 83, 0.2);
-    color: var(--accent-green);
-}
-
-.pnl-negative {
-    background: rgba(233, 69, 96, 0.2);
-    color: var(--accent);
-}
-
-/* Resolution outcome badge */
-.resolution-badge {
-    font-size: 11px;
-    font-weight: 700;
-    padding: 2px 6px;
-    border-radius: 4px;
-    background: rgba(68, 138, 255, 0.15);
-    color: var(--accent-blue);
-}
-
 .hidden {
     display: none !important;
 }
-

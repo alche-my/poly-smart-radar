@@ -144,6 +144,7 @@ body {
 
 .status-active { background: rgba(0, 200, 83, 0.2); color: var(--accent-green); }
 .status-weakening { background: rgba(255, 214, 0, 0.2); color: var(--accent-yellow); }
+.status-resolved { background: rgba(68, 138, 255, 0.2); color: var(--accent-blue); }
 .status-closed { background: rgba(233, 69, 96, 0.2); color: var(--accent); }
 
 .signal-card .score,
@@ -430,6 +431,34 @@ body {
     font-size: 13px;
     border-radius: 8px;
     margin: 12px;
+}
+
+/* P&L badge on resolved signals */
+.pnl-badge {
+    font-size: 12px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+
+.pnl-positive {
+    background: rgba(0, 200, 83, 0.2);
+    color: var(--accent-green);
+}
+
+.pnl-negative {
+    background: rgba(233, 69, 96, 0.2);
+    color: var(--accent);
+}
+
+/* Resolution outcome badge */
+.resolution-badge {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(68, 138, 255, 0.15);
+    color: var(--accent-blue);
 }
 
 .hidden {

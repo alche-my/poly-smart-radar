@@ -68,7 +68,7 @@ class DataApiClient(BaseApiClient):
     ) -> list[dict]:
         all_results = []
         offset = 0
-        page_size = 100
+        page_size = 50  # API caps responses at 50
         while offset < max_results:
             batch = await self.get_closed_positions(user, limit=page_size, offset=offset)
             if not batch:

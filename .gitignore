@@ -3,3 +3,9 @@ __pycache__/
 data/
 *.db
 .env
+
+# Large data files (backtest results, portfolio output)
+full_results.json
+full_results_portfolio.json
+algo_positions.csv
+algo_summary.csv

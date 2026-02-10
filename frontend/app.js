@@ -24,6 +24,19 @@ async function apiFetch(path) {
     return resp.json();
 }
 
+// Safe render helper — one bad item won't kill the whole list
+function safeMap(arr, renderFn) {
+    return arr.map(item => {
+        try {
+            if (!item || typeof item !== 'object') return '';
+            return renderFn(item);
+        } catch (e) {
+            console.error('Render error:', e, item);
+            return '';
+        }
+    }).join('');
+}
+
 // --- Tabs ---
 $$('.tab').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -51,6 +64,7 @@ async function loadTab(tab) {
         else if (tab === 'traders') await loadTraders();
         else if (tab === 'dashboard') await loadDashboard();
     } catch (err) {
+        console.error('loadTab error:', err);
         showError(err.message);
     } finally {
         hide($('#loading'));
@@ -88,7 +102,7 @@ async function loadSignals() {
 
     hide(empty);
     signalsCache = data.signals;
-    list.innerHTML = data.signals.map(renderSignalCard).join('');
+    list.innerHTML = safeMap(data.signals, renderSignalCard);
 
     // Attach click handlers
     list.querySelectorAll('.signal-card').forEach((card, i) => {
@@ -111,19 +125,28 @@ function renderSignalCard(s) {
     const timeAgo = formatTimeAgo(s.created_at);
     const price = s.current_price != null ? `$${Number(s.current_price).toFixed(2)}` : '';
 
+    // P&L badge for resolved signals
+    let pnlHtml = '';
+    if (status === 'RESOLVED' && s.pnl_percent != null) {
+        const pnl = Number(s.pnl_percent) * 100;
+        const pnlClass = pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
+        pnlHtml = `<span class="pnl-badge ${pnlClass}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(0)}%</span>`;
+    }
+
     return `
         <div class="card signal-card" role="button">
             <div class="header">
                 <div class="header-left">
                     <span class="tier-badge ${tierClass}">${tierLabel}</span>
                     <span class="status-badge ${statusClass}">${status}</span>
+                    ${pnlHtml}
                 </div>
                 <span class="score">Score: ${Number(s.signal_score || 0).toFixed(1)}</span>
             </div>
             <div class="market-title">${escapeHtml(s.market_title || 'Unknown market')}</div>
             <div class="meta">
                 <span class="direction ${dirClass}">${(s.direction || '?').toUpperCase()} @ ${price}</span>
-                <span>${timeAgo}</span>
+                <span>${tradersCount > 0 ? tradersCount + ' traders' : ''} ${timeAgo}</span>
             </div>
         </div>
     `;
@@ -152,7 +175,7 @@ function openSignalDetail(s) {
         tradersHtml = `
             <div class="detail-section">
                 <div class="detail-section-title">Traders (${traders.length})</div>
-                ${traders.map(renderTraderInSignal).join('')}
+                ${safeMap(traders, renderTraderInSignal)}
             </div>
         `;
     }
@@ -189,6 +212,16 @@ function openSignalDetail(s) {
                 <div class="detail-row">
                     <span class="detail-label">Updated</span>
                     <span>${updatedAgo}</span>
+                </div>` : ''}
+                ${status === 'RESOLVED' && s.resolution_outcome ? `
+                <div class="detail-row">
+                    <span class="detail-label">Resolution</span>
+                    <span class="resolution-badge">${s.resolution_outcome}</span>
+                </div>` : ''}
+                ${status === 'RESOLVED' && s.pnl_percent != null ? `
+                <div class="detail-row">
+                    <span class="detail-label">P&L</span>
+                    <span class="pnl-badge ${Number(s.pnl_percent) >= 0 ? 'pnl-positive' : 'pnl-negative'}">${Number(s.pnl_percent) >= 0 ? '+' : ''}${(Number(s.pnl_percent) * 100).toFixed(1)}%</span>
                 </div>` : ''}
             </div>
 
@@ -275,7 +308,7 @@ async function loadTraders() {
     }
 
     hide(empty);
-    list.innerHTML = data.traders.map(renderTraderCard).join('');
+    list.innerHTML = safeMap(data.traders, renderTraderCard);
 }
 
 function renderTraderCard(t) {
@@ -331,7 +364,7 @@ async function loadDashboard() {
             </div>
         </div>
         <h3>Top Active Signals</h3>
-        ${(data.top_signals || []).map(renderSignalCard).join('') || '<div class="empty-state">No active signals</div>'}
+        ${safeMap(data.top_signals || [], renderSignalCard) || '<div class="empty-state">No active signals</div>'}
     `;
 }
 

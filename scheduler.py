@@ -11,6 +11,7 @@ from modules.watchlist_builder import WatchlistBuilder
 from modules.position_scanner import PositionScanner
 from modules.signal_detector import SignalDetector
 from modules.alert_sender import AlertSender
+from modules.resolution_checker import ResolutionChecker
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ class RadarScheduler:
         self.position_scanner = PositionScanner(self.data_api, db_path)
         self.signal_detector = SignalDetector(db_path)
         self.alert_sender = AlertSender(db_path=db_path)
+        self.resolution_checker = ResolutionChecker(self.gamma_api, db_path)
         self._running = False
 
     async def start(self) -> None:
@@ -69,8 +71,15 @@ class RadarScheduler:
         changes = await self.position_scanner.scan_all()
         signals = self.signal_detector.detect_signals()
 
-        # Notifications disabled — will be re-enabled with smarter logic later
-        sent = 0
+        # Enrich new signals with current market price
+        await self._enrich_market_prices(signals)
+
+        # Check resolutions of existing signals
+        res_result = await self.resolution_checker.check_all()
+
+        # Strategy-filtered notifications: new signals + resolutions
+        alert_result = await self.alert_sender.send_strategy_alerts()
+        sent = alert_result.get("new_signals", 0) + alert_result.get("resolutions", 0)
 
         traders_count = len(get_traders(self.db_path))
         result = {
@@ -78,14 +87,71 @@ class RadarScheduler:
             "changes_detected": len(changes),
             "signals_created": len(signals),
             "alerts_sent": sent,
+            "resolutions_found": res_result.get("resolved", 0),
         }
         logger.info(
-            "--- Scan cycle done: %d traders, %d changes, %d signals ---",
+            "--- Scan cycle done: %d traders, %d changes, %d signals, %d resolved ---",
             result["traders_scanned"],
             result["changes_detected"],
             result["signals_created"],
+            result["resolutions_found"],
         )
         return result
+
+    async def _enrich_market_prices(self, signals: list[dict]) -> None:
+        """Fetch current market price for newly created signals via Gamma API."""
+        from db.models import _get_connection, update_signal
+
+        new_signals = [s for s in signals if s.get("new")]
+        if not new_signals:
+            return
+
+        conn = _get_connection(self.db_path)
+        try:
+            for sig in new_signals:
+                sid = sig.get("id")
+                cid = sig.get("condition_id")
+                if not sid or not cid:
+                    continue
+                try:
+                    # Fetch signal to get direction
+                    row = conn.execute(
+                        "SELECT direction FROM signals WHERE id = ?", (sid,)
+                    ).fetchone()
+                    if not row:
+                        continue
+                    direction = row["direction"]
+
+                    market = await self.gamma_api.get_market_by_condition(cid)
+                    if not market:
+                        continue
+
+                    # Parse outcomePrices — JSON string like "[0.35, 0.65]"
+                    outcome_prices = market.get("outcomePrices")
+                    if isinstance(outcome_prices, str):
+                        import json
+                        outcome_prices = json.loads(outcome_prices)
+
+                    if outcome_prices and len(outcome_prices) >= 2:
+                        # outcomePrices[0] = YES price, outcomePrices[1] = NO price
+                        if direction == "YES":
+                            market_price = float(outcome_prices[0])
+                        else:
+                            market_price = float(outcome_prices[1])
+                    else:
+                        continue
+
+                    update_signal(self.db_path, sid, {
+                        "market_price_at_signal": market_price,
+                    })
+                    logger.info(
+                        "Signal %d: market price at signal = %.4f",
+                        sid, market_price,
+                    )
+                except Exception as e:
+                    logger.warning("Failed to enrich signal %s: %s", sid, e)
+        finally:
+            conn.close()
 
     def _cleanup_old_data(self) -> None:
         cutoff = (

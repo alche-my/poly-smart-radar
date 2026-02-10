@@ -10,7 +10,7 @@ CLOB_API_BASE_URL = "https://clob.polymarket.com"
 
 # --- Intervals ---
 SCAN_INTERVAL_MINUTES = 5
-WATCHLIST_UPDATE_HOURS = 24
+WATCHLIST_UPDATE_HOURS = 168  # 7 days — keep current traders stable for a week
 SNAPSHOT_RETENTION_DAYS = 30
 
 # --- Scoring Thresholds ---

@@ -9,6 +9,7 @@ _ALTER_MIGRATIONS = [
     ("signals", "resolved_at", "ALTER TABLE signals ADD COLUMN resolved_at TIMESTAMP"),
     ("signals", "resolution_outcome", "ALTER TABLE signals ADD COLUMN resolution_outcome TEXT"),
     ("signals", "pnl_percent", "ALTER TABLE signals ADD COLUMN pnl_percent REAL"),
+    ("signals", "market_price_at_signal", "ALTER TABLE signals ADD COLUMN market_price_at_signal REAL"),
 ]
 
 

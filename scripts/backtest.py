@@ -65,8 +65,8 @@ async def collect_resolved_markets(
     gamma_api: GammaApiClient, months: int
 ) -> list[dict]:
     """Fetch all resolved markets within the date range."""
-    cutoff = (datetime.utcnow() - timedelta(days=months * 30)).isoformat()
-    logger.info("Fetching resolved markets since %s", cutoff[:10])
+    cutoff = (datetime.utcnow() - timedelta(days=months * 30)).strftime("%Y-%m-%d")
+    logger.info("Fetching resolved markets since %s", cutoff)
     markets = await gamma_api.get_all_closed_markets(
         end_date_min=cutoff, max_results=10000,
     )

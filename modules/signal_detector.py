@@ -145,7 +145,7 @@ class SignalDetector:
                 "category_scores": cat_scores,
                 "conviction": best_change.get("conviction_score", 1.0),
                 "change_type": best_change.get("change_type", "OPEN"),
-                "size": best_change.get("new_size", 0),
+                "size": best_change.get("new_size", 0) * best_change.get("price_at_change", 0),
                 "category_match": calc_category_match(trader, market_category),
                 "freshness": calc_freshness(best_change.get("detected_at", "")),
                 "detected_at": best_change.get("detected_at", ""),

@@ -95,7 +95,7 @@ def _enrich_signal(s: dict, conn) -> dict:
                     "category_scores": cat,
                     "conviction": r.get("conviction_score", 1.0),
                     "change_type": r.get("change_type", "OPEN"),
-                    "size": r.get("new_size", 0),
+                    "size": float(r.get("new_size", 0)) * float(r.get("price_at_change", 0)),
                     "detected_at": r.get("detected_at", ""),
                 })
 

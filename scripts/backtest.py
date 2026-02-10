@@ -44,20 +44,26 @@ logger = logging.getLogger("backtest")
 async def collect_trader_positions(
     data_api: DataApiClient, traders: list[dict]
 ) -> dict[str, list[dict]]:
-    """Fetch closed positions sequentially (1 trader at a time, no parallelism)."""
+    """Fetch closed positions in pairs to balance speed vs rate limits."""
     all_positions: dict[str, list[dict]] = {}
     total = len(traders)
+    batch_size = 2  # 2 concurrent — safe for API rate limits
 
-    for i, trader in enumerate(traders):
-        wallet = trader["wallet_address"]
-        # 200 max = 4 pages of 50 — enough for 3-month window
-        positions = await data_api.get_closed_positions_all(wallet, max_results=200)
-        if positions:
-            all_positions[wallet] = positions
+    for start in range(0, total, batch_size):
+        batch = traders[start : start + batch_size]
+        tasks = [
+            data_api.get_closed_positions_all(t["wallet_address"], max_results=500)
+            for t in batch
+        ]
+        results = await asyncio.gather(*tasks)
+        for trader, positions in zip(batch, results):
+            if positions:
+                all_positions[trader["wallet_address"]] = positions
 
-        done = i + 1
+        done = min(start + batch_size, total)
         if done % 50 == 0 or done == total:
             logger.info("Fetching positions %d/%d (%d with data)", done, total, len(all_positions))
+        await asyncio.sleep(0.2)
 
     logger.info("Collected positions for %d/%d traders", len(all_positions), total)
     return all_positions
@@ -450,7 +456,7 @@ def print_report(stats: dict, signals: list[dict]) -> None:
 # ── Main ──────────────────────────────────────────────────────────────
 
 
-async def run_backtest(months: int, output_path: str | None) -> dict:
+async def run_backtest(months: int, output_path: str | None, limit_traders: int = 0) -> dict:
     data_api = DataApiClient()
     gamma_api = GammaApiClient()
 
@@ -462,8 +468,12 @@ async def run_backtest(months: int, output_path: str | None) -> dict:
             logger.error("No traders in watchlist! Run: python main.py --rebuild-watchlist")
             return {}
 
-        logger.info("Watchlist: %d traders", len(traders))
+        # All traders for DB lookup, but limit API fetching
         traders_db = {t["wallet_address"]: t for t in traders}
+        if limit_traders > 0:
+            traders = traders[:limit_traders]
+
+        logger.info("Watchlist: %d traders (fetching %d)", len(traders_db), len(traders))
 
         all_positions = await collect_trader_positions(data_api, traders)
         resolved_markets = await collect_resolved_markets(gamma_api, months)
@@ -515,9 +525,10 @@ def main():
     parser = argparse.ArgumentParser(description="Polymarket Convergence Backtest")
     parser.add_argument("--months", type=int, default=3, help="How many months back (default: 3)")
     parser.add_argument("--output", "-o", type=str, default=None, help="Save results to JSON file")
+    parser.add_argument("--limit-traders", type=int, default=0, help="Limit number of traders (0=all, for testing)")
     args = parser.parse_args()
 
-    results = asyncio.run(run_backtest(args.months, args.output))
+    results = asyncio.run(run_backtest(args.months, args.output, args.limit_traders))
 
     if results and results.get("stats", {}).get("overall", {}).get("count", 0) > 0:
         overall = results["stats"]["overall"]

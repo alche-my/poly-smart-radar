@@ -44,18 +44,25 @@ logger = logging.getLogger("backtest")
 async def collect_trader_positions(
     data_api: DataApiClient, traders: list[dict]
 ) -> dict[str, list[dict]]:
-    """Fetch closed positions for every trader in the watchlist."""
+    """Fetch closed positions for every trader in the watchlist (concurrent)."""
     all_positions: dict[str, list[dict]] = {}
     total = len(traders)
+    sem = asyncio.Semaphore(10)  # 10 concurrent requests
+    done = [0]
 
-    for i, trader in enumerate(traders):
+    async def _fetch(trader: dict) -> tuple[str, list[dict]]:
         wallet = trader["wallet_address"]
-        logger.info("Fetching positions %d/%d: %s", i + 1, total, wallet[:10])
-        positions = await data_api.get_closed_positions_all(wallet, max_results=2000)
+        async with sem:
+            positions = await data_api.get_closed_positions_all(wallet, max_results=2000)
+            done[0] += 1
+            if done[0] % 50 == 0 or done[0] == total:
+                logger.info("Fetching positions %d/%d", done[0], total)
+            return wallet, positions
+
+    results = await asyncio.gather(*[_fetch(t) for t in traders])
+    for wallet, positions in results:
         if positions:
             all_positions[wallet] = positions
-            logger.info("  → %d closed positions", len(positions))
-        await asyncio.sleep(0.05)
 
     logger.info("Collected positions for %d/%d traders", len(all_positions), total)
     return all_positions

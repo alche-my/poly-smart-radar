@@ -50,16 +50,22 @@ async def rebuild_watchlist(scheduler: RadarScheduler) -> None:
 
 async def run_daemon(scheduler: RadarScheduler) -> None:
     loop = asyncio.get_event_loop()
+    task = asyncio.current_task()
 
     def handle_shutdown(sig, frame):
         logger.info("Received %s, shutting down...", signal.Signals(sig).name)
         scheduler.stop()
+        # Cancel the running task so we don't wait for current scan to finish
+        if task:
+            task.cancel()
 
     signal.signal(signal.SIGINT, handle_shutdown)
     signal.signal(signal.SIGTERM, handle_shutdown)
 
     try:
         await scheduler.start()
+    except asyncio.CancelledError:
+        logger.info("Daemon cancelled, cleaning up...")
     finally:
         await scheduler.close()
 

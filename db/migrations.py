@@ -10,6 +10,8 @@ _ALTER_MIGRATIONS = [
     ("signals", "resolution_outcome", "ALTER TABLE signals ADD COLUMN resolution_outcome TEXT"),
     ("signals", "pnl_percent", "ALTER TABLE signals ADD COLUMN pnl_percent REAL"),
     ("signals", "market_price_at_signal", "ALTER TABLE signals ADD COLUMN market_price_at_signal REAL"),
+    ("signals", "resolution_alert_sent", "ALTER TABLE signals ADD COLUMN resolution_alert_sent BOOLEAN DEFAULT 0"),
+    ("signals", "market_category", "ALTER TABLE signals ADD COLUMN market_category TEXT"),
 ]
 
 

@@ -192,6 +192,7 @@ class SignalDetector:
                 "status": "ACTIVE",
                 "traders_involved": traders_data,
                 "current_price": changes[0].get("price_at_change", 0),
+                "market_category": market_category,
                 "created_at": now,
                 "updated_at": now,
                 "sent": False,

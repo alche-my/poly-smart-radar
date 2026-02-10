@@ -77,8 +77,9 @@ class RadarScheduler:
         # Check resolutions of existing signals
         res_result = await self.resolution_checker.check_all()
 
-        # Notifications disabled — will be re-enabled with smarter logic later
-        sent = 0
+        # Strategy-filtered notifications: new signals + resolutions
+        alert_result = await self.alert_sender.send_strategy_alerts()
+        sent = alert_result.get("new_signals", 0) + alert_result.get("resolutions", 0)
 
         traders_count = len(get_traders(self.db_path))
         result = {

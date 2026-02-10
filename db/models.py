@@ -290,8 +290,9 @@ def insert_signal(db_path: str, signal: dict) -> int:
             INSERT INTO signals (
                 condition_id, market_title, market_slug, direction,
                 signal_score, peak_score, tier, status,
-                traders_involved, current_price, created_at, updated_at, sent
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                traders_involved, current_price, market_category,
+                created_at, updated_at, sent
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 signal["condition_id"], signal.get("market_title"),
@@ -300,6 +301,7 @@ def insert_signal(db_path: str, signal: dict) -> int:
                 signal.get("tier"), signal.get("status", "ACTIVE"),
                 json.dumps(signal.get("traders_involved", [])),
                 signal.get("current_price", 0),
+                signal.get("market_category"),
                 signal.get("created_at", datetime.utcnow().isoformat()),
                 signal.get("updated_at"),
                 signal.get("sent", False),
@@ -373,6 +375,32 @@ def mark_signal_sent(db_path: str, signal_id: int) -> None:
     conn = _get_connection(db_path)
     try:
         conn.execute("UPDATE signals SET sent = 1 WHERE id = ?", (signal_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_newly_resolved_signals(db_path: str) -> list[dict]:
+    """Get signals that resolved but haven't had a resolution alert sent yet."""
+    conn = _get_connection(db_path)
+    try:
+        rows = conn.execute(
+            "SELECT * FROM signals WHERE resolved_at IS NOT NULL "
+            "AND (resolution_alert_sent IS NULL OR resolution_alert_sent = 0) "
+            "ORDER BY resolved_at DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def mark_resolution_alert_sent(db_path: str, signal_id: int) -> None:
+    conn = _get_connection(db_path)
+    try:
+        conn.execute(
+            "UPDATE signals SET resolution_alert_sent = 1 WHERE id = ?",
+            (signal_id,),
+        )
         conn.commit()
     finally:
         conn.close()

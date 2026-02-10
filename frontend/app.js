@@ -125,12 +125,21 @@ function renderSignalCard(s) {
     const timeAgo = formatTimeAgo(s.created_at);
     const price = s.current_price != null ? `$${Number(s.current_price).toFixed(2)}` : '';
 
+    // P&L badge for resolved signals
+    let pnlHtml = '';
+    if (status === 'RESOLVED' && s.pnl_percent != null) {
+        const pnl = Number(s.pnl_percent) * 100;
+        const pnlClass = pnl >= 0 ? 'pnl-positive' : 'pnl-negative';
+        pnlHtml = `<span class="pnl-badge ${pnlClass}">${pnl >= 0 ? '+' : ''}${pnl.toFixed(0)}%</span>`;
+    }
+
     return `
         <div class="card signal-card" role="button">
             <div class="header">
                 <div class="header-left">
                     <span class="tier-badge ${tierClass}">${tierLabel}</span>
                     <span class="status-badge ${statusClass}">${status}</span>
+                    ${pnlHtml}
                 </div>
                 <span class="score">Score: ${Number(s.signal_score || 0).toFixed(1)}</span>
             </div>
@@ -203,6 +212,16 @@ function openSignalDetail(s) {
                 <div class="detail-row">
                     <span class="detail-label">Updated</span>
                     <span>${updatedAgo}</span>
+                </div>` : ''}
+                ${status === 'RESOLVED' && s.resolution_outcome ? `
+                <div class="detail-row">
+                    <span class="detail-label">Resolution</span>
+                    <span class="resolution-badge">${s.resolution_outcome}</span>
+                </div>` : ''}
+                ${status === 'RESOLVED' && s.pnl_percent != null ? `
+                <div class="detail-row">
+                    <span class="detail-label">P&L</span>
+                    <span class="pnl-badge ${Number(s.pnl_percent) >= 0 ? 'pnl-positive' : 'pnl-negative'}">${Number(s.pnl_percent) >= 0 ? '+' : ''}${(Number(s.pnl_percent) * 100).toFixed(1)}%</span>
                 </div>` : ''}
             </div>
 

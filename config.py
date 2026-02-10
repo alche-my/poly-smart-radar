@@ -22,6 +22,12 @@ MIN_TRADERS_FOR_SIGNAL = 2
 # --- Signal Window ---
 SIGNAL_WINDOW_HOURS = 24
 
+# --- Strategy Filters (validated via train/test split) ---
+STRATEGY_MIN_PRICE = 0.10
+STRATEGY_MAX_PRICE = 0.85
+STRATEGY_BAD_CATEGORIES = {"CRYPTO", "CULTURE", "FINANCE"}
+STRATEGY_MAX_TIER = 2  # Tier 1 + Tier 2 only
+
 # --- Freshness Tiers (hours -> multiplier) ---
 FRESHNESS_TIERS = {
     2: 2.0,

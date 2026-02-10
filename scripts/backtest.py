@@ -44,26 +44,20 @@ logger = logging.getLogger("backtest")
 async def collect_trader_positions(
     data_api: DataApiClient, traders: list[dict]
 ) -> dict[str, list[dict]]:
-    """Fetch closed positions in batches to avoid 429 rate limits."""
+    """Fetch closed positions sequentially (1 trader at a time, no parallelism)."""
     all_positions: dict[str, list[dict]] = {}
     total = len(traders)
-    batch_size = 3  # conservative to avoid 429
 
-    for start in range(0, total, batch_size):
-        batch = traders[start : start + batch_size]
-        tasks = [
-            data_api.get_closed_positions_all(t["wallet_address"], max_results=2000)
-            for t in batch
-        ]
-        results = await asyncio.gather(*tasks)
-        for trader, positions in zip(batch, results):
-            if positions:
-                all_positions[trader["wallet_address"]] = positions
+    for i, trader in enumerate(traders):
+        wallet = trader["wallet_address"]
+        # 200 max = 4 pages of 50 — enough for 3-month window
+        positions = await data_api.get_closed_positions_all(wallet, max_results=200)
+        if positions:
+            all_positions[wallet] = positions
 
-        done = min(start + batch_size, total)
-        if done % 30 == 0 or done == total:
+        done = i + 1
+        if done % 50 == 0 or done == total:
             logger.info("Fetching positions %d/%d (%d with data)", done, total, len(all_positions))
-        await asyncio.sleep(0.3)  # rate limit pause between batches
 
     logger.info("Collected positions for %d/%d traders", len(all_positions), total)
     return all_positions

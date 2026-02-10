@@ -34,7 +34,8 @@ def passes_strategy_filter(signal: dict) -> bool:
     if tier > config.STRATEGY_MAX_TIER:
         return False
 
-    price = signal.get("current_price", 0) or signal.get("market_price_at_signal", 0)
+    price = signal.get("current_price") or signal.get("market_price_at_signal") or 0
+    price = float(price) if price is not None else 0.0
     if price < config.STRATEGY_MIN_PRICE or price > config.STRATEGY_MAX_PRICE:
         return False
 

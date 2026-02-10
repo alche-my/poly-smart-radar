@@ -197,8 +197,17 @@ function openSignalDetail(s) {
             <div class="detail-meta">
                 <div class="detail-row">
                     <span class="detail-label">Direction</span>
-                    <span class="direction ${dirClass}">${(s.direction || '?').toUpperCase()} @ ${price}</span>
+                    <span class="direction ${dirClass}">${(s.direction || '?').toUpperCase()}</span>
                 </div>
+                <div class="detail-row">
+                    <span class="detail-label">Entry price</span>
+                    <span>${price || '—'}</span>
+                </div>
+                ${s.market_price_at_signal != null ? `
+                <div class="detail-row">
+                    <span class="detail-label">Market price</span>
+                    <span>$${Number(s.market_price_at_signal).toFixed(2)}</span>
+                </div>` : ''}
                 ${peakScore !== currentScore ? `
                 <div class="detail-row">
                     <span class="detail-label">Peak score</span>

@@ -1,0 +1,34 @@
+{
+  "meta": {
+    "months": 3,
+    "run_at": "2026-01-15T12:00:00",
+    "traders_count": 20,
+    "positions_count": 500,
+    "markets_count": 100,
+    "signals_count": 15
+  },
+  "stats": {
+    "total_signals": 15,
+    "by_tier": {
+      "1": {"count": 7, "wins": 6, "losses": 1, "win_rate": 0.857, "avg_pnl": 3.2, "kelly": 0.81},
+      "2": {"count": 8, "wins": 5, "losses": 3, "win_rate": 0.625, "avg_pnl": 1.8, "kelly": 0.61}
+    }
+  },
+  "signals": [
+    {"condition_id": "0x001", "market_title": "Will BTC hit $80k?", "category": "CRYPTO", "direction": "YES", "resolution": "YES", "correct": true, "tier": 1, "signal_score": 25.3, "num_traders": 3, "entry_price": 0.18, "pnl": 4.5556, "avg_conviction": 2.1, "cat_match_ratio": 0.67, "end_date": "2025-11-05T00:00:00Z"},
+    {"condition_id": "0x002", "market_title": "Will ETH hit $5k?", "category": "CRYPTO", "direction": "YES", "resolution": "NO", "correct": false, "tier": 1, "signal_score": 18.0, "num_traders": 3, "entry_price": 0.35, "pnl": -1.0, "avg_conviction": 1.8, "cat_match_ratio": 0.80, "end_date": "2025-11-10T00:00:00Z"},
+    {"condition_id": "0x003", "market_title": "Will Lakers win?", "category": "SPORTS", "direction": "YES", "resolution": "YES", "correct": true, "tier": 2, "signal_score": 12.0, "num_traders": 2, "entry_price": 0.42, "pnl": 1.381, "avg_conviction": 1.5, "cat_match_ratio": 0.30, "end_date": "2025-11-12T00:00:00Z"},
+    {"condition_id": "0x004", "market_title": "Will Trump win Iowa?", "category": "POLITICS", "direction": "YES", "resolution": "YES", "correct": true, "tier": 1, "signal_score": 30.0, "num_traders": 4, "entry_price": 0.22, "pnl": 3.545, "avg_conviction": 2.5, "cat_match_ratio": 0.50, "end_date": "2025-11-15T00:00:00Z"},
+    {"condition_id": "0x005", "market_title": "Will SOL hit $200?", "category": "CRYPTO", "direction": "YES", "resolution": "YES", "correct": true, "tier": 2, "signal_score": 10.5, "num_traders": 2, "entry_price": 0.30, "pnl": 2.333, "avg_conviction": 1.6, "cat_match_ratio": 0.75, "end_date": "2025-11-20T00:00:00Z"},
+    {"condition_id": "0x006", "market_title": "Will Fed cut rates?", "category": "ECONOMICS", "direction": "NO", "resolution": "NO", "correct": true, "tier": 1, "signal_score": 22.0, "num_traders": 3, "entry_price": 0.25, "pnl": 3.0, "avg_conviction": 2.0, "cat_match_ratio": 0.40, "end_date": "2025-11-25T00:00:00Z"},
+    {"condition_id": "0x007", "market_title": "Will Chiefs win Super Bowl?", "category": "SPORTS", "direction": "YES", "resolution": "NO", "correct": false, "tier": 2, "signal_score": 9.0, "num_traders": 2, "entry_price": 0.55, "pnl": -1.0, "avg_conviction": 1.4, "cat_match_ratio": 0.20, "end_date": "2025-12-01T00:00:00Z"},
+    {"condition_id": "0x008", "market_title": "Will DOGE hit $1?", "category": "CRYPTO", "direction": "YES", "resolution": "YES", "correct": true, "tier": 1, "signal_score": 20.0, "num_traders": 3, "entry_price": 0.15, "pnl": 5.667, "avg_conviction": 2.3, "cat_match_ratio": 0.90, "end_date": "2025-12-05T00:00:00Z"},
+    {"condition_id": "0x009", "market_title": "Will XRP hit $3?", "category": "CRYPTO", "direction": "YES", "resolution": "NO", "correct": false, "tier": 2, "signal_score": 11.0, "num_traders": 2, "entry_price": 0.40, "pnl": -1.0, "avg_conviction": 1.5, "cat_match_ratio": 0.60, "end_date": "2025-12-10T00:00:00Z"},
+    {"condition_id": "0x010", "market_title": "Will BTC hit $100k?", "category": "CRYPTO", "direction": "YES", "resolution": "YES", "correct": true, "tier": 1, "signal_score": 28.0, "num_traders": 4, "entry_price": 0.20, "pnl": 4.0, "avg_conviction": 2.4, "cat_match_ratio": 0.85, "end_date": "2025-12-15T00:00:00Z"},
+    {"condition_id": "0x011", "market_title": "Will Celtics win?", "category": "SPORTS", "direction": "YES", "resolution": "YES", "correct": true, "tier": 2, "signal_score": 10.0, "num_traders": 2, "entry_price": 0.50, "pnl": 1.0, "avg_conviction": 1.6, "cat_match_ratio": 0.35, "end_date": "2025-12-20T00:00:00Z"},
+    {"condition_id": "0x012", "market_title": "Will ADA hit $2?", "category": "CRYPTO", "direction": "YES", "resolution": "NO", "correct": false, "tier": 2, "signal_score": 8.5, "num_traders": 2, "entry_price": 0.45, "pnl": -1.0, "avg_conviction": 1.3, "cat_match_ratio": 0.70, "end_date": "2025-12-25T00:00:00Z"},
+    {"condition_id": "0x013", "market_title": "Will ETH 2.0 ship?", "category": "CRYPTO", "direction": "YES", "resolution": "YES", "correct": true, "tier": 1, "signal_score": 26.0, "num_traders": 3, "entry_price": 0.28, "pnl": 2.571, "avg_conviction": 2.2, "cat_match_ratio": 0.75, "end_date": "2026-01-05T00:00:00Z"},
+    {"condition_id": "0x014", "market_title": "Will DOT hit $50?", "category": "CRYPTO", "direction": "YES", "resolution": "YES", "correct": true, "tier": 2, "signal_score": 12.5, "num_traders": 2, "entry_price": 0.32, "pnl": 2.125, "avg_conviction": 1.7, "cat_match_ratio": 0.80, "end_date": "2026-01-10T00:00:00Z"},
+    {"condition_id": "0x015", "market_title": "Will Nuggets win?", "category": "SPORTS", "direction": "YES", "resolution": "NO", "correct": false, "tier": 1, "signal_score": 16.0, "num_traders": 3, "entry_price": 0.60, "pnl": -1.0, "avg_conviction": 1.9, "cat_match_ratio": 0.25, "end_date": "2026-01-15T00:00:00Z"}
+  ]
+}

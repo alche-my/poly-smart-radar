@@ -50,6 +50,8 @@ class TestInitDb:
         assert "position_snapshots" in tables
         assert "position_changes" in tables
         assert "signals" in tables
+        assert "bot_trades" in tables
+        assert "bot_state" in tables
 
     def test_creates_indexes(self, db_path):
         conn = sqlite3.connect(db_path)
@@ -59,7 +61,7 @@ class TestInitDb:
             ).fetchall()
         ]
         conn.close()
-        assert len(indexes) == 7
+        assert len(indexes) == 11
 
     def test_idempotent(self, db_path):
         init_db(db_path)
@@ -69,7 +71,7 @@ class TestInitDb:
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
         ).fetchall()
         conn.close()
-        assert len(tables) == 4
+        assert len(tables) == 6
 
 
 class TestTraders:

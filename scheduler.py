@@ -28,6 +28,12 @@ class RadarScheduler:
         self.resolution_checker = ResolutionChecker(self.gamma_api, db_path)
         self._running = False
 
+        # Trading bot (optional — only active if BOT_ENABLED=true)
+        self._bot_executor = None
+        if config.BOT_ENABLED:
+            from bot.executor import BotExecutor
+            self._bot_executor = BotExecutor(db_path)
+
     async def start(self) -> None:
         run_migrations(self.db_path)
 
@@ -38,6 +44,16 @@ class RadarScheduler:
             await self.watchlist_builder.build_watchlist()
 
         self._running = True
+
+        # Initialize bot if enabled
+        if self._bot_executor:
+            bot_ok = await self._bot_executor.initialize()
+            if bot_ok:
+                logger.info("Trading bot initialized and active")
+            else:
+                logger.warning("Trading bot failed to initialize — running without bot")
+                self._bot_executor = None
+
         logger.info(
             "Scheduler started: scan every %dm, watchlist update every %dh",
             config.SCAN_INTERVAL_MINUTES,
@@ -81,6 +97,14 @@ class RadarScheduler:
         alert_result = await self.alert_sender.send_strategy_alerts()
         sent = alert_result.get("new_signals", 0) + alert_result.get("resolutions", 0)
 
+        # Execute bot trades on new signals + process resolutions
+        bot_traded = 0
+        if self._bot_executor:
+            bot_result = await self._bot_executor.execute_on_new_signals()
+            bot_traded = bot_result.get("traded", 0)
+            await self._bot_executor.process_resolutions()
+            await self._maybe_send_daily_summary()
+
         traders_count = len(get_traders(self.db_path))
         result = {
             "traders_scanned": traders_count,
@@ -88,6 +112,7 @@ class RadarScheduler:
             "signals_created": len(signals),
             "alerts_sent": sent,
             "resolutions_found": res_result.get("resolved", 0),
+            "bot_trades": bot_traded,
         }
         logger.info(
             "--- Scan cycle done: %d traders, %d changes, %d signals, %d resolved ---",
@@ -150,6 +175,43 @@ class RadarScheduler:
                     )
                 except Exception as e:
                     logger.warning("Failed to enrich signal %s: %s", sid, e)
+        finally:
+            conn.close()
+
+    async def _maybe_send_daily_summary(self) -> None:
+        """Send bot daily summary once per day."""
+        if not self._bot_executor:
+            return
+        from db.models import _get_connection
+        from datetime import date
+
+        conn = _get_connection(self.db_path)
+        try:
+            row = conn.execute(
+                "SELECT value FROM bot_state WHERE key = 'last_daily_summary'"
+            ).fetchone()
+            last_date = row["value"] if row else ""
+            today = date.today().isoformat()
+            if last_date == today:
+                return
+        finally:
+            conn.close()
+
+        await self._bot_executor.send_daily_summary()
+
+        conn = _get_connection(self.db_path)
+        try:
+            conn.execute(
+                "INSERT INTO bot_state (key, value, updated_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value, "
+                "updated_at=excluded.updated_at",
+                (
+                    "last_daily_summary",
+                    date.today().isoformat(),
+                    datetime.utcnow().isoformat(),
+                ),
+            )
+            conn.commit()
         finally:
             conn.close()
 

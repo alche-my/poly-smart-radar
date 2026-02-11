@@ -19,6 +19,7 @@ def run_migrations(db_path: str) -> None:
     init_db(db_path)
     conn = _get_connection(db_path)
     try:
+        # Column-level migrations
         for table, column, sql in _ALTER_MIGRATIONS:
             existing = {
                 row[1]
@@ -27,6 +28,20 @@ def run_migrations(db_path: str) -> None:
             if column not in existing:
                 conn.execute(sql)
                 logger.info("Migration: added %s.%s", table, column)
+
+        # Table-level migrations (for tables added after initial release)
+        existing_tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        from db.models import _TABLES
+        for table_name in ("bot_trades", "bot_state"):
+            if table_name not in existing_tables and table_name in _TABLES:
+                conn.execute(_TABLES[table_name])
+                logger.info("Migration: created table %s", table_name)
+
         conn.commit()
     finally:
         conn.close()

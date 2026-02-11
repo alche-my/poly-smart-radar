@@ -40,5 +40,18 @@ FRESHNESS_TIERS = {
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
+# --- Trading Bot ---
+BOT_ENABLED = os.getenv("BOT_ENABLED", "false").lower() == "true"
+BOT_PRIVATE_KEY = os.getenv("BOT_PRIVATE_KEY", "")
+BOT_WALLET_ADDRESS = os.getenv("BOT_WALLET_ADDRESS", "")
+BOT_TELEGRAM_CHAT_ID = os.getenv("BOT_TELEGRAM_CHAT_ID", "")
+BOT_INITIAL_BUDGET = float(os.getenv("BOT_INITIAL_BUDGET", "10.0"))
+BOT_BET_SIZE = float(os.getenv("BOT_BET_SIZE", "0.50"))
+BOT_MAX_OPEN_POSITIONS = int(os.getenv("BOT_MAX_OPEN_POSITIONS", "10"))
+BOT_MAX_DAILY_SPEND = float(os.getenv("BOT_MAX_DAILY_SPEND", "2.50"))
+BOT_MIN_BALANCE = float(os.getenv("BOT_MIN_BALANCE", "2.00"))
+BOT_CIRCUIT_BREAKER_PCT = float(os.getenv("BOT_CIRCUIT_BREAKER_PCT", "0.30"))
+BOT_MAX_SLIPPAGE = float(os.getenv("BOT_MAX_SLIPPAGE", "0.15"))
+
 # --- Database ---
 DB_PATH = os.path.join(os.path.dirname(__file__), "radar.db")

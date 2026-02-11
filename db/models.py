@@ -77,6 +77,36 @@ _TABLES = {
             pnl_percent REAL
         )
     """,
+    "bot_trades": """
+        CREATE TABLE IF NOT EXISTS bot_trades (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            signal_id INTEGER NOT NULL,
+            condition_id TEXT NOT NULL,
+            market_title TEXT,
+            direction TEXT NOT NULL,
+            token_id TEXT,
+            order_id TEXT,
+            status TEXT NOT NULL DEFAULT 'PLACED',
+            entry_price REAL DEFAULT 0,
+            cost_usd REAL DEFAULT 0,
+            shares REAL DEFAULT 0,
+            pnl_usd REAL,
+            pnl_pct REAL,
+            resolution_outcome TEXT,
+            error_message TEXT,
+            created_at TIMESTAMP NOT NULL,
+            updated_at TIMESTAMP,
+            resolved_at TIMESTAMP,
+            FOREIGN KEY (signal_id) REFERENCES signals(id)
+        )
+    """,
+    "bot_state": """
+        CREATE TABLE IF NOT EXISTS bot_state (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TIMESTAMP
+        )
+    """,
 }
 
 _INDEXES = [
@@ -87,6 +117,10 @@ _INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_signals_condition_dir ON signals(condition_id, direction)",
     "CREATE INDEX IF NOT EXISTS idx_signals_status ON signals(status)",
     "CREATE INDEX IF NOT EXISTS idx_signals_sent ON signals(sent)",
+    "CREATE INDEX IF NOT EXISTS idx_bot_trades_status ON bot_trades(status)",
+    "CREATE INDEX IF NOT EXISTS idx_bot_trades_signal ON bot_trades(signal_id)",
+    "CREATE INDEX IF NOT EXISTS idx_bot_trades_condition ON bot_trades(condition_id)",
+    "CREATE INDEX IF NOT EXISTS idx_bot_trades_created ON bot_trades(created_at)",
 ]
 
 

@@ -41,7 +41,7 @@ class BotExecutor:
             logger.info("Bot executor initialized")
             return True
         except Exception as e:
-            logger.error("Failed to initialize bot: %s", e)
+            logger.error("Failed to initialize bot: %s", e, exc_info=True)
             return False
 
     async def execute_on_new_signals(self) -> dict:
@@ -71,6 +71,7 @@ class BotExecutor:
                     "Unexpected error trading signal %s: %s",
                     signal.get("id"),
                     e,
+                    exc_info=True,
                 )
                 errors += 1
 
@@ -419,7 +420,19 @@ class BotExecutor:
                 ),
             )
             conn.commit()
-            return cur.lastrowid
+            trade_id = cur.lastrowid
+            logger.debug(
+                "Inserted bot_trade #%d: signal=%s, status=%s, cost=$%.2f",
+                trade_id, trade["signal_id"], trade["status"],
+                trade.get("cost_usd", 0),
+            )
+            return trade_id
+        except Exception as e:
+            logger.error(
+                "Failed to insert bot_trade for signal %s: %s",
+                trade.get("signal_id"), e, exc_info=True,
+            )
+            raise
         finally:
             conn.close()
 
@@ -440,6 +453,13 @@ class BotExecutor:
                 values,
             )
             conn.commit()
+            logger.debug("Updated bot_trade #%d: %s", trade_id, updates)
+        except Exception as e:
+            logger.error(
+                "Failed to update bot_trade #%d: %s", trade_id, e,
+                exc_info=True,
+            )
+            raise
         finally:
             conn.close()
 
@@ -458,7 +478,8 @@ class BotExecutor:
                 "text": text,
                 "disable_web_page_preview": True,
             }
-            async with aiohttp.ClientSession() as session:
+            timeout = aiohttp.ClientTimeout(total=15)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.post(url, json=payload) as resp:
                     if resp.status == 200:
                         return True
@@ -468,5 +489,5 @@ class BotExecutor:
                     )
                     return False
         except Exception as e:
-            logger.error("Failed to send bot Telegram: %s", e)
+            logger.error("Failed to send bot Telegram: %s", e, exc_info=True)
             return False

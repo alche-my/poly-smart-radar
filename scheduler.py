@@ -47,11 +47,15 @@ class RadarScheduler:
 
         # Initialize bot if enabled
         if self._bot_executor:
-            bot_ok = await self._bot_executor.initialize()
-            if bot_ok:
-                logger.info("Trading bot initialized and active")
-            else:
-                logger.warning("Trading bot failed to initialize — running without bot")
+            try:
+                bot_ok = await self._bot_executor.initialize()
+                if bot_ok:
+                    logger.info("Trading bot initialized and active")
+                else:
+                    logger.warning("Trading bot failed to initialize — running without bot")
+                    self._bot_executor = None
+            except Exception as e:
+                logger.error("Trading bot crashed during init: %s", e, exc_info=True)
                 self._bot_executor = None
 
         logger.info(
@@ -100,10 +104,21 @@ class RadarScheduler:
         # Execute bot trades on new signals + process resolutions
         bot_traded = 0
         if self._bot_executor:
-            bot_result = await self._bot_executor.execute_on_new_signals()
-            bot_traded = bot_result.get("traded", 0)
-            await self._bot_executor.process_resolutions()
-            await self._maybe_send_daily_summary()
+            try:
+                bot_result = await self._bot_executor.execute_on_new_signals()
+                bot_traded = bot_result.get("traded", 0)
+            except Exception as e:
+                logger.error("Bot execute_on_new_signals failed: %s", e, exc_info=True)
+
+            try:
+                await self._bot_executor.process_resolutions()
+            except Exception as e:
+                logger.error("Bot process_resolutions failed: %s", e, exc_info=True)
+
+            try:
+                await self._maybe_send_daily_summary()
+            except Exception as e:
+                logger.error("Bot daily summary failed: %s", e, exc_info=True)
 
         traders_count = len(get_traders(self.db_path))
         result = {

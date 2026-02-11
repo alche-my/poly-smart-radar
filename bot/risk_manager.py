@@ -179,6 +179,13 @@ class RiskManager:
                 (key, value, datetime.utcnow().isoformat()),
             )
             conn.commit()
+            logger.debug("bot_state: %s = %s", key, value)
+        except Exception as e:
+            logger.error(
+                "Failed to set bot_state %s=%s: %s", key, value, e,
+                exc_info=True,
+            )
+            raise
         finally:
             conn.close()
 
